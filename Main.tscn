@@ -1,0 +1,210 @@
+[gd_scene load_steps=2 format=3 uid="uid://df23kj2h4x8ga"]
+
+[ext_resource type="Script" path="res://main.gd" id="1_main"]
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1_main")
+
+[node name="BattleContainer" type="Node2D" parent="."]
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(640, 360)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="."]
+
+[node name="StatsPanel" type="PanelContainer" parent="CanvasLayer"]
+offset_left = 16.0
+offset_top = 16.0
+offset_right = 330.0
+offset_bottom = 146.0
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer/StatsPanel"]
+layout_mode = 2
+theme_override_constants/margin_left = 10
+theme_override_constants/margin_top = 10
+theme_override_constants/margin_right = 10
+theme_override_constants/margin_bottom = 10
+
+[node name="StatsLabel" type="Label" parent="CanvasLayer/StatsPanel/MarginContainer"]
+layout_mode = 2
+text = "CONFIGURACAO"
+
+[node name="Panel" type="PanelContainer" parent="CanvasLayer"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 0.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -620.0
+grow_horizontal = 0
+grow_vertical = 2
+custom_minimum_size = Vector2(620, 0)
+
+[node name="MarginContainer" type="MarginContainer" parent="CanvasLayer/Panel"]
+layout_mode = 2
+theme_override_constants/margin_left = 14
+theme_override_constants/margin_top = 14
+theme_override_constants/margin_right = 14
+theme_override_constants/margin_bottom = 14
+
+[node name="ScrollOuter" type="ScrollContainer" parent="CanvasLayer/Panel/MarginContainer"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="VBox" type="VBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 8
+
+[node name="LblTitle" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "BRAWLLS"
+horizontal_alignment = 1
+
+[node name="Sep0" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblArenaSize" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Arena"
+
+[node name="ArenaOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblScenario" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Cenario"
+
+[node name="ScenarioOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="Sep1" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblPresets" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Preset"
+
+[node name="PresetOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="BtnLoadPreset" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Carregar preset"
+
+[node name="Sep2" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblAdd" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Adicionar bola"
+
+[node name="HBoxName" type="HBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblName" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxName"]
+layout_mode = 2
+text = "Nome"
+custom_minimum_size = Vector2(58, 0)
+
+[node name="InputName" type="LineEdit" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxName"]
+layout_mode = 2
+size_flags_horizontal = 3
+placeholder_text = "Ex: Teen"
+
+[node name="HBoxWeapon" type="HBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblWeapon" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxWeapon"]
+layout_mode = 2
+text = "Arma"
+custom_minimum_size = Vector2(58, 0)
+
+[node name="WeaponOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxWeapon"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="HBoxColor" type="HBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblColor" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxColor"]
+layout_mode = 2
+text = "Cor"
+custom_minimum_size = Vector2(58, 0)
+
+[node name="ColorPicker" type="ColorPickerButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxColor"]
+layout_mode = 2
+size_flags_horizontal = 3
+color = Color(0.2, 0.5, 1, 1)
+
+[node name="HBoxHP" type="HBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblHP" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxHP"]
+layout_mode = 2
+text = "HP"
+custom_minimum_size = Vector2(58, 0)
+
+[node name="SpinHP" type="SpinBox" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxHP"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 10.0
+max_value = 500.0
+step = 10.0
+value = 100.0
+
+[node name="HBoxMass" type="HBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblMass" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxMass"]
+layout_mode = 2
+text = "Massa"
+custom_minimum_size = Vector2(58, 0)
+
+[node name="SpinMass" type="SpinBox" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxMass"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.5
+max_value = 5.0
+step = 0.5
+value = 1.0
+
+[node name="BtnAdd" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "+ Adicionar"
+
+[node name="Sep3" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="LblList" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Fila da batalha"
+
+[node name="ScrollContainer" type="ScrollContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+size_flags_vertical = 3
+custom_minimum_size = Vector2(0, 126)
+horizontal_scroll_mode = 0
+
+[node name="BallList" type="VBoxContainer" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/ScrollContainer"]
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="BtnClear" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Limpar fila"
+
+[node name="Sep4" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+
+[node name="BtnStart" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Iniciar batalha"
+
+[node name="BtnReset" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+text = "Resetar"
+
+[node name="LblWinner" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
+layout_mode = 2
+horizontal_alignment = 1

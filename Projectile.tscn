@@ -1,0 +1,14 @@
+[gd_scene format=3 uid="uid://d3x12jlk38iaq"]
+
+[ext_resource type="Script" path="res://projectile.gd" id="1_proj"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_proj"]
+radius = 10.0
+
+[node name="Projectile" type="Area2D"]
+script = ExtResource("1_proj")
+
+
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_proj")
