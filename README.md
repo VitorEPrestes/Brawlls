@@ -1,5 +1,7 @@
 # Brawlls
 
+AVISO: Este repositório é PROPRIETÁRIO — não é código aberto. Uso e modificações por terceiros não autorizados não são permitidos.
+
 Simulador 2D de batalhas físicas criado em Godot (GDScript).
 
 **Visão rápida**: é um protótipo de arena com entidades que batalham automaticamente usando armas modulares.
