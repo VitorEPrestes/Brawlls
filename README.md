@@ -32,20 +32,8 @@ godot --path .
 - O projeto usa a pipeline GL compatibility (veja `project.godot`) para maximizar compatibilidade.
 - Se aparecer aviso de conversão de fim-de-linha ao commitar (`CRLF -> LF`), é normal no Windows; verifique `.gitattributes`.
 
-## Contribuindo
-- Abra uma issue descrevendo o bug ou recurso.
-- Para mudanças pequenas, envie um PR na branch `main` (ou crie uma branch por recurso).
-
-Recomendações iniciais de melhorias:
-- adicionar um arquivo `LICENSE` (ex.: MIT) se quiser código aberto.
-- incluir instruções de exportação para builds (Windows/Linux/Mac) no README.
-- criar testes automatizados para lógicas determinísticas (ex.: cálculo de dano).
-
-## Próximos passos que posso fazer por você
-- adicionar um `LICENSE` (MIT) e commitar;
-- criar um `CONTRIBUTING.md` com fluxo de trabalho;
-- gerar um template de issue e PR no repositório;
-- documentar como exportar build para Windows.
+## Nota sobre contribuição
+Este repositório é pessoal e NÃO aceita contribuições externas.
 
 ---
 Arquivo atualizado: [README.md](README.md)
