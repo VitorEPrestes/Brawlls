@@ -3,7 +3,6 @@ extends Node2D
 
 #region References
 const WeaponRegistryScript = preload("res://weapon_registry.gd")
-const PresetCatalogScript = preload("res://preset_catalog.gd")
 
 # --- UI References ---
 @onready var side_panel: PanelContainer = $CanvasLayer/Panel
@@ -14,8 +13,6 @@ const PresetCatalogScript = preload("res://preset_catalog.gd")
 @onready var btn_reset: Button = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/BtnReset
 @onready var btn_add: Button = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/BtnAdd
 @onready var btn_clear: Button = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/BtnClear
-@onready var btn_load_preset: Button = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/BtnLoadPreset
-@onready var preset_option: OptionButton = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/PresetOption
 @onready var weapon_option: OptionButton = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxWeapon/WeaponOption
 @onready var input_name: LineEdit = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxName/InputName
 @onready var color_picker: ColorPickerButton = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxColor/ColorPicker
@@ -44,7 +41,6 @@ var ball_counter: int = 0
 var battle_elapsed: float = 0.0
 var active_balls: Array = []
 var battle_total_count: int = 0
-var presets: Array = []
 var base_zoom_factor: float = 1.0
 var camera_tween: Tween = null
 var vertical_base_zoom_factor: float = 1.0
@@ -52,8 +48,28 @@ var vertical_zoom_multiplier: float = 1.0
 var vertical_camera_tween: Tween = null
 var btn_vertical: Button
 var team_option: OptionButton
+var selected_ball_index: int = -1
+var status_surface: PanelContainer = null
+var lobby_queue_label: Label = null
+var lobby_arena_label: Label = null
+var lobby_scenario_label: Label = null
+var queue_count_label: Label = null
+var preview_surface: PanelContainer = null
+var preview_portrait_surface: PanelContainer = null
+var preview_role_chip: PanelContainer = null
+var preview_team_chip: PanelContainer = null
+var preview_source_label: Label = null
+var preview_name_label: Label = null
+var preview_role_label: Label = null
+var preview_team_label: Label = null
+var preview_texture_rect: TextureRect = null
+var preview_texture_fallback: Label = null
+var preview_color_badge: ColorRect = null
+var preview_blurb_label: Label = null
+var preview_summary_label: Label = null
 var is_vertical_mode: bool = false
 var side_panel_was_visible: bool = true
+var pre_vertical_window_size: Vector2i = Vector2i(1280, 720)
 var vertical_overlay: CanvasLayer = null
 var vertical_subviewport: SubViewport = null
 var vertical_container: SubViewportContainer = null
@@ -65,9 +81,14 @@ var vertical_title_panel: PanelContainer = null
 var vertical_title_label: RichTextLabel = null
 var vertical_stats_panel: PanelContainer = null
 var vertical_stats_label: RichTextLabel = null
+var vertical_close_button: Button = null
+var vertical_countdown_label: Label = null
+var vertical_countdown_tween: Tween = null
 var is_start_countdown: bool = false
 var start_countdown_timer: float = 0.0
 var last_countdown_second: int = -1
+var countdown_display_marker: int = -99
+var brawl_countdown_font: Font = null
 var stats_refresh_timer: float = 0.0
 var menu_layout_applied: bool = false
 var kill_streak_by_attacker: Dictionary = {}
@@ -93,6 +114,7 @@ const VERTICAL_ARENA_RATIO = 0.98
 const VERTICAL_STAGE_TOP_RATIO = 0.145
 const VERTICAL_FX_SCALE = 1.48
 const START_COUNTDOWN_SECONDS = 3.0
+const START_BRAWLLS_HOLD_SECONDS = 1.0
 const STATS_REFRESH_INTERVAL = 0.12
 const KILL_STREAK_WINDOW = 2.1
 const KO_FREEZE_DURATION = 0.09
@@ -114,6 +136,15 @@ const ACCENT = Color(0.35, 0.72, 1.0)
 const GOOD = Color(0.26, 0.9, 0.48)
 const WARN = Color(1.0, 0.76, 0.25)
 const DANGER = Color(1.0, 0.28, 0.24)
+const ARCADE_CYAN = Color(0.26, 0.84, 1.0)
+const ARCADE_PINK = Color(1.0, 0.36, 0.66)
+const ARCADE_ORANGE = Color(1.0, 0.60, 0.18)
+const SURFACE_ALT = Color(0.11, 0.09, 0.16, 0.98)
+const SURFACE_ALT_BORDER = Color(0.36, 0.29, 0.50, 0.95)
+const SURFACE_CARD = Color(0.08, 0.10, 0.16, 0.98)
+const SURFACE_CARD_BORDER = Color(0.22, 0.32, 0.46, 0.92)
+const TEXT_SOFT = Color(0.94, 0.97, 1.0)
+const TEXT_MUTED = Color(0.64, 0.72, 0.84)
 const SCENARIO_DESERT = Arena.SCENARIO_DESERT
 const SCENARIO_CEMETERY = Arena.SCENARIO_CEMETERY
 const DESERT_CLEAR = Color(0.70, 0.48, 0.26)
@@ -162,10 +193,10 @@ func _ready():
 	_apply_ui_style()
 	_populate_options()
 	_apply_scenario_chrome()
-	_build_presets()
-	_load_preset(0)
+	_update_lobby_header()
+	_update_preview()
 	get_viewport().size_changed.connect(_on_viewport_resized)
-	_set_status("Pronto para iniciar.", GOOD)
+	_set_status("Monte a fila e adicione pelo menos 2 bolas.", WARN)
 	_sync_ui_state()
 	_update_stats()
 
@@ -176,14 +207,20 @@ func _process(delta):
 
 	if is_start_countdown:
 		start_countdown_timer = max(0.0, start_countdown_timer - delta)
-		var countdown_second = int(ceil(start_countdown_timer))
-		if countdown_second != last_countdown_second:
-			last_countdown_second = countdown_second
-			if countdown_second > 0:
-				_set_status("Batalha comeca em %d..." % countdown_second, WARN)
+		var countdown_marker = _current_countdown_marker()
+		if countdown_marker != last_countdown_second:
+			last_countdown_second = countdown_marker
+			countdown_display_marker = countdown_marker
+			if countdown_marker > 0:
+				_set_status("Batalha comeca em %d..." % countdown_marker, WARN)
 			else:
-				_start_battle_now()
-				return
+				_set_status("Brawlls!", ACCENT)
+			_update_vertical_countdown_overlay(true)
+		else:
+			_update_vertical_countdown_overlay(false)
+		if start_countdown_timer <= 0.0:
+			_start_battle_now()
+			return
 	
 	if is_battling:
 		battle_elapsed += delta
@@ -203,11 +240,15 @@ func _connect_ui():
 	btn_reset.pressed.connect(_on_reset_pressed)
 	btn_add.pressed.connect(_on_add_pressed)
 	btn_clear.pressed.connect(_on_clear_pressed)
-	btn_load_preset.pressed.connect(_on_load_preset_pressed)
+	arena_option.item_selected.connect(_on_arena_selected)
 	scenario_option.item_selected.connect(_on_scenario_selected)
+	weapon_option.item_selected.connect(_on_form_option_changed)
+	input_name.text_changed.connect(_on_form_text_changed)
+	spin_hp.value_changed.connect(_on_form_value_changed)
+	spin_mass.value_changed.connect(_on_form_value_changed)
 	
 	btn_vertical = Button.new()
-	btn_vertical.text = "Modo video curto 9:16"
+	btn_vertical.text = "Modo 9:16"
 	ui_root.add_child(btn_vertical)
 	btn_vertical.pressed.connect(_toggle_vertical_mode)
 	
@@ -226,6 +267,7 @@ func _connect_ui():
 	team_hbox.add_child(team_lbl)
 	team_hbox.add_child(team_option)
 	team_option.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	team_option.item_selected.connect(_on_form_option_changed)
 	ui_root.add_child(team_hbox)
 	ui_root.move_child(team_hbox, btn_add.get_index())
 
@@ -233,31 +275,36 @@ func _apply_ui_text():
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblTitle.text = "BRAWLLS"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblArenaSize.text = "Arena"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblScenario.text = "Cenario"
-	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblPresets.text = "Preset"
-	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblAdd.text = "Nova bola"
+	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblAdd.text = "Montar brawler"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxName/LblName.text = "Nome"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxWeapon/LblWeapon.text = "Arma"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxColor/LblColor.text = "Cor"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxHP/LblHP.text = "HP"
 	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/HBoxMass/LblMass.text = "Massa"
-	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblList.text = "Bolas na partida"
-	input_name.placeholder_text = "Ex: Teen"
-	btn_load_preset.text = "Carregar preset"
-	btn_add.text = "+ Adicionar"
+	$CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblList.text = "Fila pronta"
+	input_name.placeholder_text = "Ex: Shelly Azul"
+	btn_add.text = "Adicionar a fila"
 	btn_clear.text = "Limpar fila"
-	btn_start.text = "Iniciar batalha"
-	btn_reset.text = "Resetar"
+	btn_start.text = "Comecar batalha"
+	btn_reset.text = "Resetar arena"
 
 func _apply_ui_style():
 	side_panel.offset_left = -SIDE_PANEL_WIDTH
 	side_panel.custom_minimum_size = Vector2(SIDE_PANEL_WIDTH, 0)
-	side_panel.add_theme_stylebox_override("panel", _make_style(PANEL_BG, PANEL_BORDER, 1, 0))
-	side_margin.add_theme_constant_override("margin_left", 14)
-	side_margin.add_theme_constant_override("margin_top", 14)
-	side_margin.add_theme_constant_override("margin_right", 14)
-	side_margin.add_theme_constant_override("margin_bottom", 14)
+	var panel_style = StyleBoxFlat.new()
+	panel_style.bg_color = Color(0.04, 0.045, 0.075, 0.985)
+	panel_style.border_color = Color(0.42, 0.30, 0.66, 0.85)
+	panel_style.border_width_left = 2
+	panel_style.shadow_color = Color(0, 0, 0, 0.55)
+	panel_style.shadow_size = 18
+	panel_style.shadow_offset = Vector2(-4, 0)
+	side_panel.add_theme_stylebox_override("panel", panel_style)
+	side_margin.add_theme_constant_override("margin_left", 16)
+	side_margin.add_theme_constant_override("margin_top", 16)
+	side_margin.add_theme_constant_override("margin_right", 16)
+	side_margin.add_theme_constant_override("margin_bottom", 16)
 	scroll_outer.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	ui_root.add_theme_constant_override("separation", 8)
+	ui_root.add_theme_constant_override("separation", 12)
 	
 	stats_panel.offset_left = 16
 	stats_panel.offset_top = 16
@@ -271,22 +318,22 @@ func _apply_ui_style():
 	stats_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	
 	var title = $CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox/LblTitle
-	title.add_theme_font_size_override("font_size", 26)
-	title.add_theme_color_override("font_color", Color(0.95, 0.98, 1.0))
-	title.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.88))
-	title.add_theme_constant_override("outline_size", 3)
+	title.text = "BRAWL  LLS"
+	title.add_theme_font_size_override("font_size", 40)
+	title.add_theme_color_override("font_color", Color(1.0, 0.97, 0.99))
+	title.add_theme_color_override("font_outline_color", Color(0.55, 0.18, 0.62, 0.95))
+	title.add_theme_constant_override("outline_size", 5)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	
 	for label_path in [
 		"LblArenaSize",
 		"LblScenario",
-		"LblPresets",
 		"LblAdd",
 		"LblList",
 	]:
 		var section_label: Label = ui_root.get_node(label_path)
 		section_label.add_theme_font_size_override("font_size", 13)
-		section_label.add_theme_color_override("font_color", Color(0.72, 0.80, 0.92))
+		section_label.add_theme_color_override("font_color", Color(0.86, 0.90, 0.99))
 		section_label.add_theme_color_override("font_outline_color", Color(0.0, 0.0, 0.0, 0.7))
 		section_label.add_theme_constant_override("outline_size", 1)
 	
@@ -294,22 +341,20 @@ func _apply_ui_style():
 		if sep is HSeparator:
 			sep.modulate = Color(0.35, 0.43, 0.56, 0.45)
 	
-	_style_button(btn_start, GOOD)
-	_style_button(btn_reset, Color(0.55, 0.62, 0.72))
-	_style_button(btn_add, ACCENT)
+	_style_button(btn_start, ARCADE_CYAN)
+	_style_button(btn_reset, Color(0.50, 0.55, 0.66))
+	_style_button(btn_add, ARCADE_ORANGE)
 	_style_button(btn_clear, DANGER)
-	_style_button(btn_load_preset, Color(0.64, 0.48, 0.95))
-	_style_button(weapon_option, Color(0.28, 0.42, 0.62))
-	_style_button(arena_option, Color(0.28, 0.42, 0.62))
-	_style_button(scenario_option, Color(0.28, 0.42, 0.62))
-	_style_button(preset_option, Color(0.28, 0.42, 0.62))
-	if team_option: _style_button(team_option, Color(0.28, 0.42, 0.62))
-	_style_button(color_picker, Color(0.28, 0.42, 0.62))
+	_style_button(weapon_option, Color(0.34, 0.46, 0.78))
+	_style_button(arena_option, Color(0.34, 0.46, 0.78))
+	_style_button(scenario_option, Color(0.34, 0.46, 0.78))
+	if team_option: _style_button(team_option, Color(0.46, 0.34, 0.78))
+	_style_button(color_picker, Color(0.32, 0.46, 0.66))
 	_style_line_edit(input_name)
 	_style_spinbox(spin_hp)
 	_style_spinbox(spin_mass)
 	if btn_vertical:
-		_style_button(btn_vertical, Color(0.85, 0.25, 0.55))
+		_style_button(btn_vertical, ARCADE_PINK)
 	
 	# Garantir valores explicitos (independente do .tscn)
 	spin_hp.min_value = 10.0
@@ -328,12 +373,12 @@ func _apply_ui_style():
 	lbl_winner.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	lbl_winner.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	
-	btn_start.tooltip_text = "Inicia a luta com as bolas na fila."
+	btn_start.tooltip_text = "Inicia a luta com os brawlers montados na fila."
 	btn_reset.tooltip_text = "Remove a arena atual e volta para a configuracao."
 	btn_add.tooltip_text = "Adiciona bola personalizada com HP/Massa/Arma definidos acima."
 	btn_clear.tooltip_text = "Remove todas as bolas da fila."
-	spin_hp.tooltip_text = "HP usado ao clicar '+ Adicionar'. Presets ignoram este valor."
-	spin_mass.tooltip_text = "Massa usada ao clicar '+ Adicionar'. Presets ignoram este valor."
+	spin_hp.tooltip_text = "HP usado ao clicar '+ Adicionar'."
+	spin_mass.tooltip_text = "Massa usada ao clicar '+ Adicionar'."
 	
 	var color_row = color_picker.get_parent()
 	if color_row:
@@ -349,7 +394,6 @@ func _arrange_menu_layout():
 	var title = ui_root.get_node("LblTitle") as Label
 	var lbl_arena = ui_root.get_node("LblArenaSize") as Label
 	var lbl_scenario = ui_root.get_node("LblScenario") as Label
-	var lbl_presets = ui_root.get_node("LblPresets") as Label
 	var lbl_add = ui_root.get_node("LblAdd") as Label
 	var lbl_list = ui_root.get_node("LblList") as Label
 	var hbox_name = ui_root.get_node("HBoxName") as HBoxContainer
@@ -363,91 +407,284 @@ func _arrange_menu_layout():
 		if child is HSeparator:
 			child.visible = false
 	
-	var columns = HBoxContainer.new()
-	columns.name = "MenuColumns"
-	columns.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	columns.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	columns.add_theme_constant_override("separation", 14)
+	var hero_card = PanelContainer.new()
+	hero_card.add_theme_stylebox_override("panel", _make_style_accent_top(Color(0.10, 0.08, 0.18, 0.98), ARCADE_PINK, 18, 3, 14.0))
+	hero_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui_root.add_child(hero_card)
+	ui_root.move_child(hero_card, title.get_index() + 1)
+	var hero_body = _make_card_body(hero_card, 16, 14, 16, 16, 12)
+	var hero_top = HBoxContainer.new()
+	hero_top.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero_top.add_theme_constant_override("separation", 12)
+	hero_body.add_child(hero_top)
 	
-	var setup_col = _make_menu_column("SetupColumn")
-	var queue_col = _make_menu_column("QueueColumn")
-	setup_col.custom_minimum_size = Vector2(280, 0)
-	queue_col.custom_minimum_size = Vector2(280, 0)
+	var hero_copy = VBoxContainer.new()
+	hero_copy.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hero_copy.add_theme_constant_override("separation", 6)
+	hero_top.add_child(hero_copy)
 	
-	var divider = VSeparator.new()
-	divider.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	divider.modulate = Color(0.35, 0.43, 0.56, 0.45)
+	var hero_kicker = Label.new()
+	hero_kicker.text = "▍ LOBBY  ARCADE"
+	hero_kicker.add_theme_font_size_override("font_size", 12)
+	hero_kicker.add_theme_color_override("font_color", ARCADE_ORANGE)
+	hero_kicker.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	hero_kicker.add_theme_constant_override("outline_size", 1)
+	hero_copy.add_child(hero_kicker)
 	
-	columns.add_child(setup_col)
-	columns.add_child(divider)
-	columns.add_child(queue_col)
-	ui_root.add_child(columns)
-	ui_root.move_child(columns, title.get_index() + 1)
+	var hero_title = Label.new()
+	hero_title.text = "Monte a fila, veja o loadout e entre na arena."
+	hero_title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hero_title.add_theme_font_size_override("font_size", 20)
+	hero_title.add_theme_color_override("font_color", TEXT_SOFT)
+	hero_title.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.65))
+	hero_title.add_theme_constant_override("outline_size", 2)
+	hero_copy.add_child(hero_title)
+	
+	var hero_subtitle = Label.new()
+	hero_subtitle.text = "Cada brawler tem identidade, role e cor — preview ao vivo no card ao lado."
+	hero_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	hero_subtitle.add_theme_font_size_override("font_size", 12)
+	hero_subtitle.add_theme_color_override("font_color", TEXT_MUTED)
+	hero_copy.add_child(hero_subtitle)
+	
+	var hero_chips = VBoxContainer.new()
+	hero_chips.add_theme_constant_override("separation", 6)
+	hero_chips.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	hero_top.add_child(hero_chips)
+	
+	var queue_chip = _make_chip("Fila vazia", ARCADE_CYAN)
+	lobby_queue_label = queue_chip["label"]
+	hero_chips.add_child(queue_chip["panel"])
+	var arena_chip = _make_chip("Arena", ARCADE_ORANGE)
+	lobby_arena_label = arena_chip["label"]
+	hero_chips.add_child(arena_chip["panel"])
+	var scenario_chip = _make_chip("Cenario", ARCADE_PINK)
+	lobby_scenario_label = scenario_chip["label"]
+	hero_chips.add_child(scenario_chip["panel"])
+	
+	status_surface = PanelContainer.new()
+	status_surface.add_theme_stylebox_override("panel", _make_style_ex(Color(0.05, 0.085, 0.13, 0.95), Color(0.20, 0.30, 0.46, 0.85), 1, 12, 0.0, Color.BLACK, 14, 10))
+	hero_body.add_child(status_surface)
+	var status_margin = MarginContainer.new()
+	status_margin.add_theme_constant_override("margin_left", 4)
+	status_margin.add_theme_constant_override("margin_top", 2)
+	status_margin.add_theme_constant_override("margin_right", 4)
+	status_margin.add_theme_constant_override("margin_bottom", 2)
+	status_surface.add_child(status_margin)
+	_move_menu_control(lbl_winner, status_margin)
+	lbl_winner.horizontal_alignment = HORIZONTAL_ALIGNMENT_LEFT
+	lbl_winner.custom_minimum_size = Vector2(0, 24)
+	
+	var content_row = HBoxContainer.new()
+	content_row.name = "LobbyContent"
+	content_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_row.add_theme_constant_override("separation", 12)
+	ui_root.add_child(content_row)
+	ui_root.move_child(content_row, hero_card.get_index() + 1)
+	
+	var setup_card = PanelContainer.new()
+	setup_card.add_theme_stylebox_override("panel", _make_style_accent_top(SURFACE_ALT, ARCADE_ORANGE, 16, 3, 10.0))
+	setup_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	setup_card.size_flags_stretch_ratio = 1.06
+	content_row.add_child(setup_card)
+	var setup_body = _make_card_body(setup_card, 14, 12, 14, 14, 10)
+	
+	var setup_kicker = Label.new()
+	setup_kicker.text = "▍ SETUP"
+	setup_kicker.add_theme_font_size_override("font_size", 10)
+	setup_kicker.add_theme_color_override("font_color", ARCADE_ORANGE)
+	setup_body.add_child(setup_kicker)
+	
+	var setup_title = Label.new()
+	setup_title.text = "Montar partida"
+	setup_title.add_theme_font_size_override("font_size", 19)
+	setup_title.add_theme_color_override("font_color", TEXT_SOFT)
+	setup_body.add_child(setup_title)
+	
+	var setup_copy = Label.new()
+	setup_copy.text = "Escolha arena, cenario e adicione brawlers manualmente."
+	setup_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	setup_copy.add_theme_font_size_override("font_size", 12)
+	setup_copy.add_theme_color_override("font_color", TEXT_MUTED)
+	setup_body.add_child(setup_copy)
 	
 	var match_grid = GridContainer.new()
 	match_grid.columns = 2
 	match_grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	match_grid.add_theme_constant_override("h_separation", 8)
 	match_grid.add_theme_constant_override("v_separation", 6)
-	setup_col.add_child(match_grid)
+	setup_body.add_child(match_grid)
 	
-	lbl_arena.custom_minimum_size = Vector2(70, 0)
-	lbl_scenario.custom_minimum_size = Vector2(70, 0)
+	lbl_arena.custom_minimum_size = Vector2(72, 0)
+	lbl_scenario.custom_minimum_size = Vector2(72, 0)
 	_move_menu_control(lbl_arena, match_grid)
 	_move_menu_control(arena_option, match_grid)
 	_move_menu_control(lbl_scenario, match_grid)
 	_move_menu_control(scenario_option, match_grid)
 	
-	_move_menu_control(lbl_presets, setup_col)
-	var preset_row = HBoxContainer.new()
-	preset_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	preset_row.add_theme_constant_override("separation", 8)
-	setup_col.add_child(preset_row)
-	_move_menu_control(preset_option, preset_row)
-	_move_menu_control(btn_load_preset, preset_row)
-	
 	var setup_sep = HSeparator.new()
-	setup_sep.modulate = Color(0.35, 0.43, 0.56, 0.45)
-	setup_col.add_child(setup_sep)
+	setup_sep.modulate = Color(0.38, 0.32, 0.54, 0.52)
+	setup_body.add_child(setup_sep)
 	
-	_move_menu_control(lbl_add, setup_col)
-	_move_menu_control(hbox_name, setup_col)
-	_move_menu_control(hbox_weapon, setup_col)
+	lbl_add.add_theme_font_size_override("font_size", 18)
+	_move_menu_control(lbl_add, setup_body)
+	
+	var form_note = Label.new()
+	form_note.text = "A preview acompanha o rascunho atual. Use os cards da fila para inspecionar um brawler ja adicionado."
+	form_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	form_note.add_theme_font_size_override("font_size", 11)
+	form_note.add_theme_color_override("font_color", TEXT_MUTED)
+	setup_body.add_child(form_note)
+	
+	_move_menu_control(hbox_name, setup_body)
+	_move_menu_control(hbox_weapon, setup_body)
 	if team_row:
-		_move_menu_control(team_row, setup_col)
+		_move_menu_control(team_row, setup_body)
 	
 	var stat_row = HBoxContainer.new()
 	stat_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	stat_row.add_theme_constant_override("separation", 8)
-	setup_col.add_child(stat_row)
+	setup_body.add_child(stat_row)
 	_move_menu_control(hbox_hp, stat_row)
 	_move_menu_control(hbox_mass, stat_row)
 	hbox_hp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hbox_mass.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	
-	_move_menu_control(btn_add, setup_col)
-	_move_menu_control(btn_vertical, setup_col)
+	_move_menu_control(btn_add, setup_body)
+	btn_add.custom_minimum_size = Vector2(0, 42)
 	
-	_move_menu_control(lbl_list, queue_col)
-	queue_scroll.custom_minimum_size = Vector2(0, 320)
+	preview_surface = PanelContainer.new()
+	preview_surface.add_theme_stylebox_override("panel", _make_style_accent_top(SURFACE_CARD, ARCADE_CYAN, 16, 3, 12.0))
+	preview_surface.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	content_row.add_child(preview_surface)
+	var preview_body = _make_card_body(preview_surface, 14, 12, 14, 14, 10)
+	
+	var preview_kicker = Label.new()
+	preview_kicker.text = "▍ PREVIEW"
+	preview_kicker.add_theme_font_size_override("font_size", 10)
+	preview_kicker.add_theme_color_override("font_color", ARCADE_CYAN)
+	preview_body.add_child(preview_kicker)
+	
+	var preview_header = Label.new()
+	preview_header.text = "Loadout ao vivo"
+	preview_header.add_theme_font_size_override("font_size", 19)
+	preview_header.add_theme_color_override("font_color", TEXT_SOFT)
+	preview_body.add_child(preview_header)
+	
+	var preview_top = HBoxContainer.new()
+	preview_top.add_theme_constant_override("separation", 8)
+	preview_body.add_child(preview_top)
+	preview_color_badge = ColorRect.new()
+	preview_color_badge.custom_minimum_size = Vector2(16, 16)
+	preview_color_badge.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	preview_top.add_child(preview_color_badge)
+	preview_source_label = Label.new()
+	preview_source_label.text = "Rascunho atual"
+	preview_source_label.add_theme_font_size_override("font_size", 12)
+	preview_source_label.add_theme_color_override("font_color", TEXT_MUTED)
+	preview_top.add_child(preview_source_label)
+	
+	preview_name_label = Label.new()
+	preview_name_label.text = "Novo Brawler"
+	preview_name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_name_label.add_theme_font_size_override("font_size", 24)
+	preview_name_label.add_theme_color_override("font_color", TEXT_SOFT)
+	preview_name_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	preview_name_label.add_theme_constant_override("outline_size", 2)
+	preview_body.add_child(preview_name_label)
+	
+	var preview_chip_row = HBoxContainer.new()
+	preview_chip_row.add_theme_constant_override("separation", 8)
+	preview_body.add_child(preview_chip_row)
+	var role_chip = _make_chip("Arma", ARCADE_CYAN)
+	preview_role_chip = role_chip["panel"]
+	preview_role_label = role_chip["label"]
+	preview_chip_row.add_child(preview_role_chip)
+	var team_chip = _make_chip("FFA", Color(0.50, 0.58, 0.70))
+	preview_team_chip = team_chip["panel"]
+	preview_team_label = team_chip["label"]
+	preview_chip_row.add_child(preview_team_chip)
+	
+	preview_portrait_surface = PanelContainer.new()
+	preview_portrait_surface.add_theme_stylebox_override("panel", _make_style_ex(Color(0.06, 0.10, 0.16, 0.95), ARCADE_CYAN.darkened(0.35), 1, 14, 8.0, Color(ARCADE_CYAN.r, ARCADE_CYAN.g, ARCADE_CYAN.b, 0.30), 4, 4))
+	preview_portrait_surface.custom_minimum_size = Vector2(0, 170)
+	preview_body.add_child(preview_portrait_surface)
+	var portrait_margin = MarginContainer.new()
+	portrait_margin.add_theme_constant_override("margin_left", 12)
+	portrait_margin.add_theme_constant_override("margin_top", 12)
+	portrait_margin.add_theme_constant_override("margin_right", 12)
+	portrait_margin.add_theme_constant_override("margin_bottom", 12)
+	preview_portrait_surface.add_child(portrait_margin)
+	var portrait_center = CenterContainer.new()
+	portrait_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	portrait_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	portrait_margin.add_child(portrait_center)
+	preview_texture_rect = TextureRect.new()
+	preview_texture_rect.custom_minimum_size = Vector2(160, 124)
+	preview_texture_rect.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	portrait_center.add_child(preview_texture_rect)
+	preview_texture_fallback = Label.new()
+	preview_texture_fallback.visible = false
+	preview_texture_fallback.add_theme_font_size_override("font_size", 28)
+	preview_texture_fallback.add_theme_color_override("font_color", TEXT_SOFT)
+	portrait_center.add_child(preview_texture_fallback)
+	
+	preview_summary_label = Label.new()
+	preview_summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_summary_label.add_theme_font_size_override("font_size", 13)
+	preview_summary_label.add_theme_color_override("font_color", TEXT_SOFT)
+	preview_body.add_child(preview_summary_label)
+	preview_blurb_label = Label.new()
+	preview_blurb_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	preview_blurb_label.add_theme_font_size_override("font_size", 12)
+	preview_blurb_label.add_theme_color_override("font_color", TEXT_MUTED)
+	preview_body.add_child(preview_blurb_label)
+	_move_menu_control(btn_vertical, preview_body)
+	btn_vertical.custom_minimum_size = Vector2(0, 38)
+	
+	var queue_card = PanelContainer.new()
+	queue_card.add_theme_stylebox_override("panel", _make_style_accent_top(Color(0.06, 0.085, 0.135, 0.98), ARCADE_PINK, 16, 3, 12.0))
+	queue_card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ui_root.add_child(queue_card)
+	ui_root.move_child(queue_card, content_row.get_index() + 1)
+	var queue_body = _make_card_body(queue_card, 14, 12, 14, 14, 10)
+	var queue_kicker = Label.new()
+	queue_kicker.text = "▍ ROSTER"
+	queue_kicker.add_theme_font_size_override("font_size", 10)
+	queue_kicker.add_theme_color_override("font_color", ARCADE_PINK)
+	queue_body.add_child(queue_kicker)
+	var queue_header = HBoxContainer.new()
+	queue_header.add_theme_constant_override("separation", 8)
+	queue_body.add_child(queue_header)
+	lbl_list.add_theme_font_size_override("font_size", 19)
+	lbl_list.add_theme_color_override("font_color", TEXT_SOFT)
+	_move_menu_control(lbl_list, queue_header)
+	var spacer = Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	queue_header.add_child(spacer)
+	var count_chip = _make_chip("Fila vazia", ARCADE_CYAN)
+	queue_count_label = count_chip["label"]
+	queue_header.add_child(count_chip["panel"])
+	
+	var action_row = HBoxContainer.new()
+	action_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	action_row.add_theme_constant_override("separation", 8)
+	queue_body.add_child(action_row)
+	_move_menu_control(btn_start, action_row)
+	_move_menu_control(btn_clear, action_row)
+	_move_menu_control(btn_reset, action_row)
+	btn_start.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	btn_start.size_flags_stretch_ratio = 2.2
+	btn_start.custom_minimum_size = Vector2(0, 44)
+	
+	queue_scroll.custom_minimum_size = Vector2(0, 260)
 	queue_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	queue_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	_move_menu_control(queue_scroll, queue_col)
-	
-	_move_menu_control(btn_start, queue_col)
-	var queue_actions = HBoxContainer.new()
-	queue_actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	queue_actions.add_theme_constant_override("separation", 8)
-	queue_col.add_child(queue_actions)
-	_move_menu_control(btn_clear, queue_actions)
-	_move_menu_control(btn_reset, queue_actions)
-	_move_menu_control(lbl_winner, queue_col)
+	_move_menu_control(queue_scroll, queue_body)
 	
 	for control in [
 		arena_option,
 		scenario_option,
-		preset_option,
-		btn_load_preset,
 		input_name,
 		weapon_option,
 		spin_hp,
@@ -460,9 +697,7 @@ func _arrange_menu_layout():
 	]:
 		if control:
 			control.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	
-	btn_start.custom_minimum_size = Vector2(0, 40)
-	lbl_winner.custom_minimum_size = Vector2(0, 48)
+	lbl_winner.custom_minimum_size = Vector2(0, 26)
 
 func _make_menu_column(node_name: String) -> VBoxContainer:
 	var column = VBoxContainer.new()
@@ -482,10 +717,71 @@ func _move_menu_control(control: Control, new_parent: Node):
 		old_parent.remove_child(control)
 	new_parent.add_child(control)
 
+func _make_surface_card(bg: Color, border: Color, radius: int = 14) -> PanelContainer:
+	var panel = PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", _make_style(bg, border, 1, radius))
+	return panel
+
+func _make_card_body(panel: PanelContainer, margin_left: int = 12, margin_top: int = 12, margin_right: int = 12, margin_bottom: int = 12, separation: int = 8) -> VBoxContainer:
+	var margin = MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", margin_left)
+	margin.add_theme_constant_override("margin_top", margin_top)
+	margin.add_theme_constant_override("margin_right", margin_right)
+	margin.add_theme_constant_override("margin_bottom", margin_bottom)
+	panel.add_child(margin)
+	var body = VBoxContainer.new()
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.add_theme_constant_override("separation", separation)
+	margin.add_child(body)
+	return body
+
+func _make_chip(text: String, color: Color) -> Dictionary:
+	var panel = PanelContainer.new()
+	var bg = Color(color.r * 0.22, color.g * 0.22, color.b * 0.22, 0.92)
+	var border = color.lightened(0.10)
+	panel.add_theme_stylebox_override("panel", _make_style_ex(bg, border, 1, 999, 0.0, Color.BLACK, 12, 5))
+	var row = HBoxContainer.new()
+	row.add_theme_constant_override("separation", 7)
+	panel.add_child(row)
+	var dot = ColorRect.new()
+	dot.color = color.lightened(0.10)
+	dot.custom_minimum_size = Vector2(7, 7)
+	dot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(dot)
+	var label = Label.new()
+	label.text = text
+	label.add_theme_font_size_override("font_size", 11)
+	label.add_theme_color_override("font_color", color.lightened(0.55))
+	label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	label.add_theme_constant_override("outline_size", 1)
+	row.add_child(label)
+	return {"panel": panel, "label": label}
+
+func _team_color(team_id: int) -> Color:
+	match team_id:
+		1:
+			return Color(0.28, 0.66, 1.0)
+		2:
+			return Color(1.0, 0.36, 0.34)
+		3:
+			return Color(0.30, 0.92, 0.50)
+		4:
+			return Color(1.0, 0.82, 0.22)
+		_:
+			return Color(0.62, 0.70, 0.82)
+
+func _team_label(team_id: int) -> String:
+	if team_id <= 0:
+		return "FFA"
+	return "Time %d" % team_id
+
 func _populate_options():
 	weapon_option.clear()
 	for weapon in weapon_types:
 		weapon_option.add_item(weapon)
+	if weapon_option.get_item_count() > 0:
+		weapon_option.selected = 0
 	
 	arena_option.clear()
 	for key in arena_sizes.keys():
@@ -496,16 +792,114 @@ func _populate_options():
 	for theme in scenario_themes:
 		scenario_option.add_item(theme)
 	scenario_option.selected = 0
+
+func _on_arena_selected(_index: int):
+	_update_lobby_header()
+	_update_stats()
+
+func _on_form_text_changed(_text: String):
+	_promote_draft_preview()
+
+func _on_form_option_changed(_index: int):
+	_promote_draft_preview()
+
+func _on_form_value_changed(_value: float):
+	_promote_draft_preview()
+
+func _promote_draft_preview():
+	var had_selection = selected_ball_index != -1
+	selected_ball_index = -1
+	if had_selection:
+		_refresh_ball_list()
+		return
+	_update_preview()
+	_update_stats()
+
+func _update_lobby_header():
+	if lobby_queue_label:
+		lobby_queue_label.text = "%d na fila" % balls_config.size() if balls_config.size() > 0 else "Fila vazia"
+	if queue_count_label:
+		queue_count_label.text = "%d na fila" % balls_config.size() if balls_config.size() > 0 else "Fila vazia"
+	if lobby_arena_label and arena_option and arena_option.get_item_count() > 0:
+		lobby_arena_label.text = arena_option.get_item_text(max(arena_option.selected, 0))
+	if lobby_scenario_label:
+		lobby_scenario_label.text = _selected_scenario_theme()
+
+func _build_draft_config() -> Dictionary:
+	var draft_name = input_name.text.strip_edges()
+	if draft_name == "":
+		draft_name = "Novo Brawler"
+	var draft_color = _next_natural_color()
+	return {
+		"display_name": draft_name,
+		"color": draft_color,
+		"natural_color": draft_color,
+		"weapon_type": WeaponRegistryScript.normalize(_selected_weapon_type()),
+		"max_hp": spin_hp.value,
+		"mass": spin_mass.value,
+		"team_id": team_option.selected if team_option else 0,
+	}
+
+func _get_preview_config() -> Dictionary:
+	if selected_ball_index >= 0 and selected_ball_index < balls_config.size():
+		return balls_config[selected_ball_index].duplicate(true)
+	selected_ball_index = -1
+	return _build_draft_config()
+
+func _update_preview():
+	if not preview_name_label:
+		return
+	var cfg = _get_preview_config()
+	var weapon_key = WeaponRegistryScript.normalize(cfg.get("weapon_type", "Shield"))
+	var accent = WeaponRegistryScript.get_preview_accent(weapon_key)
+	var final_cfg = WeaponRegistryScript.apply_stat_modifiers(cfg)
+	var base_hp = float(cfg.get("max_hp", 100.0))
+	var final_hp = float(final_cfg.get("max_hp", base_hp))
+	var base_mass = float(cfg.get("mass", 1.0))
+	var final_mass = float(final_cfg.get("mass", base_mass))
+	var team_id = int(cfg.get("team_id", 0))
+	var team_color = _team_color(team_id)
+	var texture = WeaponRegistryScript.get_preview_texture(weapon_key)
+	var stat_note = WeaponRegistryScript.stat_summary(cfg)
+	var hp_text = "HP %.0f" % base_hp
+	if not is_equal_approx(base_hp, final_hp):
+		hp_text += " -> %.0f" % final_hp
+	var mass_text = "Massa %.1f" % base_mass
+	if not is_equal_approx(base_mass, final_mass):
+		mass_text += " -> %.2f" % final_mass
+	
+	preview_source_label.text = "Selecionado na fila" if selected_ball_index >= 0 else "Rascunho atual"
+	preview_name_label.text = String(cfg.get("display_name", "Novo Brawler"))
+	preview_role_label.text = "%s | %s" % [weapon_key, WeaponRegistryScript.get_preview_role(weapon_key)]
+	preview_team_label.text = _team_label(team_id)
+	preview_summary_label.text = "%s\n%s\n%s" % [hp_text, mass_text, stat_note if stat_note != "" else "Sem bonus extras nesta arma."]
+	preview_blurb_label.text = WeaponRegistryScript.get_preview_blurb(weapon_key)
+	preview_color_badge.color = Color(cfg.get("color", accent))
+	preview_texture_rect.texture = texture
+	preview_texture_rect.visible = texture != null
+	preview_texture_fallback.visible = texture == null
+	preview_texture_fallback.text = weapon_key.substr(0, min(3, weapon_key.length())).to_upper()
+	preview_surface.add_theme_stylebox_override("panel", _make_style(SURFACE_CARD, accent.lightened(0.05), 1, 16))
+	preview_portrait_surface.add_theme_stylebox_override("panel", _make_style(Color(cfg.get("color", accent)).darkened(0.72), accent, 1, 14))
+	preview_role_chip.add_theme_stylebox_override("panel", _make_style(accent.darkened(0.76), accent.lightened(0.08), 1, 13))
+	preview_team_chip.add_theme_stylebox_override("panel", _make_style(team_color.darkened(0.76), team_color.lightened(0.06), 1, 13))
+
+func _queue_card_summary_text(config: Dictionary) -> String:
+	var final_cfg = WeaponRegistryScript.apply_stat_modifiers(config)
+	var base_hp = float(config.get("max_hp", 100.0))
+	var final_hp = float(final_cfg.get("max_hp", base_hp))
+	var base_mass = float(config.get("mass", 1.0))
+	var final_mass = float(final_cfg.get("mass", base_mass))
+	var summary = "HP %.0f" % base_hp
+	if not is_equal_approx(base_hp, final_hp):
+		summary += " -> %.0f" % final_hp
+	summary += " | Massa %.1f" % base_mass
+	if not is_equal_approx(base_mass, final_mass):
+		summary += " -> %.2f" % final_mass
+	return summary
 #endregion
 
-#region Presets & Queue
-func _build_presets():
-	presets = PresetCatalogScript.build_presets(weapon_types)
-	
-	preset_option.clear()
-	for preset in presets:
-		preset_option.add_item(preset["name"])
-
+#region Queue
 func _next_natural_color() -> Color:
 	var used_colors = []
 	for cfg in balls_config:
@@ -581,105 +975,141 @@ func _on_add_pressed():
 	}
 	balls_config.append(cfg)
 	input_name.text = ""
+	selected_ball_index = balls_config.size() - 1
 	_refresh_ball_list()
 	_set_status("%d bolas na fila." % balls_config.size(), GOOD if balls_config.size() >= 2 else WARN)
 	_sync_ui_state()
+	_update_stats()
 
 func _on_clear_pressed():
 	balls_config.clear()
 	ball_counter = 0
+	selected_ball_index = -1
 	_refresh_ball_list()
-	_set_status("Fila limpa.", WARN)
+	_set_status("Fila limpa. Adicione pelo menos 2 bolas.", WARN)
 	_sync_ui_state()
 	_update_stats()
 
-func _on_load_preset_pressed():
-	_load_preset(preset_option.selected)
-	_set_status("Preset carregado: " + preset_option.get_item_text(preset_option.selected), GOOD)
-
-func _load_preset(index: int):
-	if index < 0 or index >= presets.size():
+func _select_ball_for_preview(index: int):
+	if index < 0 or index >= balls_config.size():
 		return
-	
-	preset_option.selected = index
-	balls_config.clear()
-	ball_counter = 0
-	for cfg in presets[index]["balls"]:
-		balls_config.append(cfg.duplicate(true))
-	_assign_natural_colors_to_queue(true)
-	ball_counter = balls_config.size()
-	if balls_config.size() > 0:
-		color_picker.color = balls_config[0].color
+	selected_ball_index = index
 	_refresh_ball_list()
-	_sync_ui_state()
 	_update_stats()
 
 func _refresh_ball_list():
 	_assign_natural_colors_to_queue(false)
+	if selected_ball_index >= balls_config.size():
+		selected_ball_index = -1
 	for child in ball_list.get_children():
 		child.queue_free()
 	
 	if balls_config.size() == 0:
-		var empty = Label.new()
-		empty.text = "Nenhuma bola na fila."
-		empty.add_theme_color_override("font_color", Color(0.58, 0.66, 0.78))
-		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		ball_list.add_child(empty)
+		var empty_panel = PanelContainer.new()
+		empty_panel.add_theme_stylebox_override("panel", _make_style_ex(Color(0.07, 0.09, 0.16, 0.96), Color(0.30, 0.40, 0.58, 0.70), 1, 14, 0.0, Color.BLACK, 4, 4))
+		var empty_body = _make_card_body(empty_panel, 18, 18, 18, 18, 6)
+		var empty_kicker = Label.new()
+		empty_kicker.text = "▍ FILA"
+		empty_kicker.add_theme_font_size_override("font_size", 10)
+		empty_kicker.add_theme_color_override("font_color", ARCADE_CYAN)
+		empty_body.add_child(empty_kicker)
+		var empty_title = Label.new()
+		empty_title.text = "Nenhum brawler na fila"
+		empty_title.add_theme_font_size_override("font_size", 17)
+		empty_title.add_theme_color_override("font_color", TEXT_SOFT)
+		empty_body.add_child(empty_title)
+		var empty_copy = Label.new()
+		empty_copy.text = "Adicione pelo menos 2 brawlers para liberar a batalha. O preview ao lado acompanha o rascunho atual."
+		empty_copy.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty_copy.add_theme_font_size_override("font_size", 12)
+		empty_copy.add_theme_color_override("font_color", TEXT_MUTED)
+		empty_body.add_child(empty_copy)
+		ball_list.add_child(empty_panel)
+		_update_lobby_header()
+		_update_preview()
 		return
 	
 	for i in range(balls_config.size()):
 		var cfg = balls_config[i]
+		var weapon_key = WeaponRegistryScript.normalize(cfg.get("weapon_type", "Shield"))
+		var accent = WeaponRegistryScript.get_preview_accent(weapon_key)
+		var texture = WeaponRegistryScript.get_preview_texture(weapon_key)
+		var final_cfg = WeaponRegistryScript.apply_stat_modifiers(cfg)
+		var team_id = int(cfg.get("team_id", 0))
+		var is_selected = i == selected_ball_index
+		var stat_note = WeaponRegistryScript.stat_summary(cfg)
 		var row_panel = PanelContainer.new()
-		row_panel.custom_minimum_size = Vector2(0, 58)
-		row_panel.add_theme_stylebox_override("panel", _make_style(CARD_BG, Color(0.24, 0.31, 0.42, 0.55), 1, 6))
+		row_panel.custom_minimum_size = Vector2(0, 96)
+		var row_bg = CARD_BG_HOVER if is_selected else Color(0.085, 0.105, 0.155, 0.96)
+		var row_border = accent if is_selected else Color(0.22, 0.30, 0.42, 0.70)
+		row_panel.add_theme_stylebox_override("panel", _make_style_ex(row_bg, row_border, 2 if is_selected else 1, 12, 8.0 if is_selected else 0.0, Color(accent.r, accent.g, accent.b, 0.45) if is_selected else Color.BLACK, 4, 4))
 		
 		var margin = MarginContainer.new()
-		margin.add_theme_constant_override("margin_left", 8)
-		margin.add_theme_constant_override("margin_top", 5)
-		margin.add_theme_constant_override("margin_right", 6)
-		margin.add_theme_constant_override("margin_bottom", 5)
+		margin.add_theme_constant_override("margin_left", 10)
+		margin.add_theme_constant_override("margin_top", 10)
+		margin.add_theme_constant_override("margin_right", 10)
+		margin.add_theme_constant_override("margin_bottom", 10)
 		row_panel.add_child(margin)
 		
-		# Outer row: color swatch | VBox(info+hp) | remove button
 		var row = HBoxContainer.new()
-		row.add_theme_constant_override("separation", 8)
+		row.add_theme_constant_override("separation", 12)
 		margin.add_child(row)
 		
-		# Color swatch
-		var color_rect = ColorRect.new()
-		color_rect.custom_minimum_size = Vector2(14, 14)
-		color_rect.color = cfg.color
-		color_rect.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(color_rect)
+		var portrait = PanelContainer.new()
+		portrait.custom_minimum_size = Vector2(74, 74)
+		portrait.add_theme_stylebox_override("panel", _make_style_ex(Color(cfg.get("color", accent)).darkened(0.70), accent, 2, 12, 0.0, Color.BLACK, 4, 4))
+		row.add_child(portrait)
+		var portrait_center = CenterContainer.new()
+		portrait_center.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		portrait_center.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		portrait.add_child(portrait_center)
+		if texture:
+			var icon = TextureRect.new()
+			icon.texture = texture
+			icon.custom_minimum_size = Vector2(54, 54)
+			icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			portrait_center.add_child(icon)
+		else:
+			var monogram = Label.new()
+			monogram.text = weapon_key.substr(0, min(3, weapon_key.length())).to_upper()
+			monogram.add_theme_font_size_override("font_size", 18)
+			monogram.add_theme_color_override("font_color", TEXT_SOFT)
+			portrait_center.add_child(monogram)
 		
-		# Center VBox: name+weapon row / hp row
-		var vbox = VBoxContainer.new()
-		vbox.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		vbox.add_theme_constant_override("separation", 3)
-		row.add_child(vbox)
+		var content = VBoxContainer.new()
+		content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		content.add_theme_constant_override("separation", 4)
+		row.add_child(content)
 		
-		# Top row: name + weapon + team
-		var lbl = Label.new()
-		var team_str = ""
-		if cfg.get("team_id", 0) > 0:
-			team_str = " [T%d]" % cfg.get("team_id", 0)
-		var stat_note = WeaponRegistryScript.stat_summary(cfg)
-		var stat_suffix = " | " + stat_note if stat_note != "" else ""
-		lbl.text = "%s%s  [%s%s]" % [cfg.display_name, team_str, cfg.weapon_type, stat_suffix]
-		lbl.clip_text = true
-		lbl.add_theme_font_size_override("font_size", 12)
-		lbl.add_theme_color_override("font_color", Color(0.9, 0.94, 1.0))
-		vbox.add_child(lbl)
+		var name_label = Label.new()
+		name_label.text = String(cfg.get("display_name", "Ball"))
+		name_label.clip_text = true
+		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.add_theme_color_override("font_color", TEXT_SOFT)
+		content.add_child(name_label)
 		
-		# Bottom row: "HP" label + SpinBox
+		var meta_label = Label.new()
+		meta_label.text = "%s • %s • %s" % [weapon_key, WeaponRegistryScript.get_preview_role(weapon_key), _team_label(team_id)]
+		meta_label.clip_text = true
+		meta_label.add_theme_font_size_override("font_size", 11)
+		meta_label.add_theme_color_override("font_color", TEXT_MUTED)
+		content.add_child(meta_label)
+		
+		var summary_label = Label.new()
+		summary_label.text = _queue_card_summary_text(cfg) + (" | " + stat_note if stat_note != "" else "")
+		summary_label.clip_text = true
+		summary_label.add_theme_font_size_override("font_size", 11)
+		summary_label.add_theme_color_override("font_color", Color(0.84, 0.89, 0.97))
+		content.add_child(summary_label)
+		
 		var hp_row = HBoxContainer.new()
-		hp_row.add_theme_constant_override("separation", 4)
-		vbox.add_child(hp_row)
+		hp_row.add_theme_constant_override("separation", 6)
+		content.add_child(hp_row)
 		
 		var hp_lbl = Label.new()
-		hp_lbl.text = "HP"
+		hp_lbl.text = "Ajuste de HP"
 		hp_lbl.add_theme_font_size_override("font_size", 11)
-		hp_lbl.add_theme_color_override("font_color", Color(0.67, 0.76, 0.88))
+		hp_lbl.add_theme_color_override("font_color", TEXT_MUTED)
 		hp_lbl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hp_row.add_child(hp_lbl)
 		
@@ -692,28 +1122,54 @@ func _refresh_ball_list():
 		hp_spin.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_style_spinbox(hp_spin)
 		var cap_i = i  # capture loop variable
+		var cap_summary_label = summary_label
 		hp_spin.value_changed.connect(func(val: float):
 			if cap_i < balls_config.size():
 				balls_config[cap_i]["max_hp"] = val
+				cap_summary_label.text = _queue_card_summary_text(balls_config[cap_i])
+				var live_note = WeaponRegistryScript.stat_summary(balls_config[cap_i])
+				if live_note != "":
+					cap_summary_label.text += " | " + live_note
+				if selected_ball_index == cap_i:
+					_update_preview()
+				_update_stats()
 		)
 		hp_row.add_child(hp_spin)
 		
-		# Remove button
+		var actions = VBoxContainer.new()
+		actions.add_theme_constant_override("separation", 6)
+		row.add_child(actions)
+		
+		var btn_preview = Button.new()
+		btn_preview.text = "Ativo" if is_selected else "Preview"
+		btn_preview.disabled = is_selected
+		btn_preview.custom_minimum_size = Vector2(78, 28)
+		_style_button(btn_preview, accent)
+		var idx_preview = i
+		btn_preview.pressed.connect(func(): _select_ball_for_preview(idx_preview))
+		actions.add_child(btn_preview)
+		
 		var btn_remove = Button.new()
-		btn_remove.text = "X"
-		btn_remove.custom_minimum_size = Vector2(30, 28)
+		btn_remove.text = "Remover"
+		btn_remove.custom_minimum_size = Vector2(78, 28)
 		btn_remove.tooltip_text = "Remover"
-		btn_remove.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		_style_button(btn_remove, DANGER)
 		var idx = i
 		btn_remove.pressed.connect(func(): _remove_ball(idx))
-		row.add_child(btn_remove)
+		actions.add_child(btn_remove)
 		
 		ball_list.add_child(row_panel)
+	
+	_update_lobby_header()
+	_update_preview()
 
 func _remove_ball(index: int):
 	if index >= 0 and index < balls_config.size():
 		balls_config.remove_at(index)
+		if selected_ball_index == index:
+			selected_ball_index = -1
+		elif selected_ball_index > index:
+			selected_ball_index -= 1
 		_refresh_ball_list()
 		_set_status("%d bolas na fila." % balls_config.size(), GOOD if balls_config.size() >= 2 else WARN)
 		_sync_ui_state()
@@ -782,19 +1238,24 @@ func _on_ball_died(dead_ball: Node):
 func _start_battle_countdown():
 	is_battling = false
 	is_start_countdown = true
-	start_countdown_timer = START_COUNTDOWN_SECONDS
+	start_countdown_timer = START_COUNTDOWN_SECONDS + START_BRAWLLS_HOLD_SECONDS
 	last_countdown_second = -1
+	countdown_display_marker = -99
 	battle_elapsed = 0.0
 	stats_refresh_timer = 0.0
 	_set_status("Batalha comeca em %d..." % int(START_COUNTDOWN_SECONDS), WARN)
+	_update_vertical_countdown_overlay(true)
 
 func _start_battle_now():
 	if not current_arena:
 		is_start_countdown = false
+		_update_vertical_countdown_overlay(false)
 		return
 	is_start_countdown = false
 	start_countdown_timer = 0.0
 	last_countdown_second = -1
+	countdown_display_marker = -99
+	_update_vertical_countdown_overlay(false)
 	
 	for ball in _get_ball_nodes():
 		ball.freeze = false
@@ -845,6 +1306,7 @@ func _on_reset_pressed():
 	is_start_countdown = false
 	start_countdown_timer = 0.0
 	last_countdown_second = -1
+	countdown_display_marker = -99
 	ko_freeze_timer = 0.0
 	ko_freeze_active = false
 	camera_shake_timer = 0.0
@@ -857,6 +1319,7 @@ func _on_reset_pressed():
 	kill_streak_by_attacker.clear()
 	_clear_battle()
 	_set_status("Arena resetada.", WARN)
+	_update_vertical_countdown_overlay(false)
 	_sync_ui_state()
 	_update_stats()
 
@@ -864,6 +1327,7 @@ func _clear_battle():
 	is_start_countdown = false
 	start_countdown_timer = 0.0
 	last_countdown_second = -1
+	countdown_display_marker = -99
 	ko_freeze_timer = 0.0
 	ko_freeze_active = false
 	camera_shake_timer = 0.0
@@ -881,6 +1345,7 @@ func _clear_battle():
 	battle_total_count = 0
 	battle_elapsed = 0.0
 	stats_refresh_timer = 0.0
+	_update_vertical_countdown_overlay(false)
 	_update_vertical_camera(true)
 
 func check_winner():
@@ -1083,12 +1548,16 @@ func _update_stats():
 		return
 	
 	if not current_arena:
-		stats_label.text = "CONFIGURACAO\nFila: %d bola(s)\nPreset: %s\nArena: %s" % [
+		var preview_cfg = _get_preview_config()
+		var preview_name = String(preview_cfg.get("display_name", "Novo Brawler"))
+		var preview_weapon = WeaponRegistryScript.normalize(preview_cfg.get("weapon_type", "Shield"))
+		var preview_source = "Fila" if selected_ball_index >= 0 else "Rascunho"
+		stats_label.text = "CONFIGURACAO\nFila: %d bola(s)\nArena: %s" % [
 			balls_config.size(),
-			preset_option.get_item_text(max(preset_option.selected, 0)) if preset_option.get_item_count() > 0 else "-",
 			arena_option.get_item_text(max(arena_option.selected, 0)) if arena_option.get_item_count() > 0 else "-",
 		]
-		stats_label.text += "\nCenario: %s\n--------------------\nPronto para iniciar" % _selected_scenario_theme()
+		stats_label.text += "\nCenario: %s\nPreview %s: %s (%s)" % [_selected_scenario_theme(), preview_source, preview_name, preview_weapon]
+		stats_label.text += "\n--------------------\n%s" % ("Pronto para iniciar" if balls_config.size() >= 2 else "Monte a fila para iniciar")
 		_update_vertical_stats()
 		return
 	
@@ -1211,13 +1680,22 @@ func _set_vertical_zoom_multiplier(multiplier: float):
 #region UI State
 func _sync_ui_state():
 	var has_enough_balls = balls_config.size() >= 2
-	btn_start.disabled = is_battling or is_start_countdown or not has_enough_balls
+	var lobby_locked = is_battling or is_start_countdown
+	btn_start.disabled = lobby_locked or not has_enough_balls
 	btn_reset.disabled = current_arena == null
-	btn_clear.disabled = balls_config.size() == 0
-	btn_load_preset.disabled = is_battling or is_start_countdown
-	preset_option.disabled = is_battling or is_start_countdown
-	arena_option.disabled = is_battling or is_start_countdown
-	scenario_option.disabled = is_battling or is_start_countdown
+	btn_clear.disabled = lobby_locked or balls_config.size() == 0
+	btn_add.disabled = lobby_locked
+	btn_vertical.disabled = false
+	arena_option.disabled = lobby_locked
+	scenario_option.disabled = lobby_locked
+	weapon_option.disabled = lobby_locked
+	if team_option:
+		team_option.disabled = lobby_locked
+	input_name.editable = not lobby_locked
+	spin_hp.editable = not lobby_locked
+	spin_mass.editable = not lobby_locked
+	if vertical_close_button and is_instance_valid(vertical_close_button):
+		vertical_close_button.disabled = false
 
 func _selected_weapon_type() -> String:
 	if weapon_option.get_item_count() == 0:
@@ -1234,13 +1712,13 @@ func _selected_scenario_theme() -> String:
 
 func _on_scenario_selected(_index: int):
 	_apply_scenario_chrome()
+	_update_lobby_header()
 	if current_arena:
 		if current_arena.has_method("set_scenario_theme"):
 			current_arena.set_scenario_theme(_selected_scenario_theme())
 		elif _object_has_property(current_arena, "scenario_theme"):
 			current_arena.set("scenario_theme", _selected_scenario_theme())
 			current_arena.queue_redraw()
-	_set_status("Cenario: " + _selected_scenario_theme(), GOOD)
 	_update_stats()
 
 func _apply_scenario_chrome():
@@ -1255,6 +1733,8 @@ func _scenario_clear_color() -> Color:
 func _set_status(text: String, color: Color):
 	lbl_winner.text = text
 	lbl_winner.add_theme_color_override("font_color", color)
+	if status_surface:
+		status_surface.add_theme_stylebox_override("panel", _make_style(color.darkened(0.78), color, 1, 12))
 	_update_vertical_stats()
 
 func _format_time(seconds: float) -> String:
@@ -1262,6 +1742,68 @@ func _format_time(seconds: float) -> String:
 	var minutes = int(total / 60)
 	var secs = total % 60
 	return "%02d:%02d" % [minutes, secs]
+	
+func _current_countdown_marker() -> int:
+	var numeric_phase_time = start_countdown_timer - START_BRAWLLS_HOLD_SECONDS
+	if numeric_phase_time > 0.0:
+		return max(1, int(ceil(numeric_phase_time)))
+	return 0
+	
+func _load_brawl_countdown_font() -> Font:
+	if brawl_countdown_font:
+		return brawl_countdown_font
+	for font_path in [
+		"res://fonts/BrawlStars.ttf",
+		"res://fonts/Brawl_Stars.ttf",
+		"res://fonts/LilitaOne-Regular.ttf",
+		"res://BrawlStars.ttf",
+	]:
+		if ResourceLoader.exists(font_path):
+			var loaded_font = load(font_path)
+			if loaded_font is Font:
+				brawl_countdown_font = loaded_font
+				break
+	return brawl_countdown_font
+	
+func _update_vertical_countdown_overlay(animate: bool):
+	if not vertical_countdown_label or not is_instance_valid(vertical_countdown_label):
+		return
+	if not is_vertical_mode or not is_start_countdown:
+		vertical_countdown_label.visible = false
+		if vertical_countdown_tween and vertical_countdown_tween.is_valid():
+			vertical_countdown_tween.kill()
+		vertical_countdown_tween = null
+		return
+	
+	var marker = _current_countdown_marker()
+	countdown_display_marker = marker
+	vertical_countdown_label.visible = true
+
+	var is_brawlls = marker <= 0
+	vertical_countdown_label.text = "Brawlls!" if is_brawlls else str(marker)
+
+	# Bigger sizes: numbers very large, "Brawlls!" slightly smaller but still impactful.
+	var font_size = _vertical_text_size(280.0, 180, 340) if not is_brawlls else _vertical_text_size(160.0, 110, 200)
+	vertical_countdown_label.add_theme_font_size_override("font_size", font_size)
+	# Always white text with thick black outline (Brawl Stars style).
+	vertical_countdown_label.add_theme_color_override("font_color", Color.WHITE)
+	vertical_countdown_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	vertical_countdown_label.add_theme_constant_override("outline_size", 16)
+
+	if not animate:
+		if not (vertical_countdown_tween and vertical_countdown_tween.is_valid()):
+			vertical_countdown_label.scale = Vector2.ONE
+			vertical_countdown_label.modulate = Color.WHITE
+		return
+
+	if vertical_countdown_tween and vertical_countdown_tween.is_valid():
+		vertical_countdown_tween.kill()
+	# Start big and transparent, shrink to normal size while fading in.
+	vertical_countdown_label.scale = Vector2.ONE * 2.4
+	vertical_countdown_label.modulate = Color(1, 1, 1, 0)
+	vertical_countdown_tween = create_tween()
+	vertical_countdown_tween.tween_property(vertical_countdown_label, "modulate:a", 1.0, 0.10)
+	vertical_countdown_tween.parallel().tween_property(vertical_countdown_label, "scale", Vector2.ONE, 0.72).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 func _object_has_property(obj: Object, property_name: String) -> bool:
 	if not is_instance_valid(obj):
@@ -1291,26 +1833,88 @@ func _make_style(bg: Color, border: Color, border_width: int, radius: int) -> St
 	style.content_margin_bottom = 7
 	return style
 
+func _make_style_ex(bg: Color, border: Color, border_width: int, radius: int, shadow: float = 0.0, shadow_color: Color = Color(0, 0, 0, 0.55), pad_x: int = 10, pad_y: int = 9) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = border
+	style.border_width_left = border_width
+	style.border_width_top = border_width
+	style.border_width_right = border_width
+	style.border_width_bottom = border_width
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.content_margin_left = pad_x
+	style.content_margin_right = pad_x
+	style.content_margin_top = pad_y
+	style.content_margin_bottom = pad_y
+	style.anti_aliasing = true
+	style.anti_aliasing_size = 1.0
+	if shadow > 0.0:
+		style.shadow_color = shadow_color
+		style.shadow_size = int(shadow)
+		style.shadow_offset = Vector2(0, max(2.0, shadow * 0.4))
+	return style
+
+func _make_style_accent_top(bg: Color, accent: Color, radius: int = 16, accent_height: int = 3, shadow: float = 12.0) -> StyleBoxFlat:
+	var style = StyleBoxFlat.new()
+	style.bg_color = bg
+	style.border_color = accent
+	style.border_width_left = 1
+	style.border_width_right = 1
+	style.border_width_bottom = 1
+	style.border_width_top = accent_height
+	style.border_blend = false
+	style.corner_radius_top_left = radius
+	style.corner_radius_top_right = radius
+	style.corner_radius_bottom_left = radius
+	style.corner_radius_bottom_right = radius
+	style.content_margin_left = 12
+	style.content_margin_right = 12
+	style.content_margin_top = 12
+	style.content_margin_bottom = 12
+	style.anti_aliasing = true
+	style.anti_aliasing_size = 1.0
+	if shadow > 0.0:
+		style.shadow_color = Color(accent.r * 0.4, accent.g * 0.4, accent.b * 0.4, 0.45)
+		style.shadow_size = int(shadow)
+		style.shadow_offset = Vector2(0, 4)
+	# Soften the side/bottom borders so only the top reads as a neon stripe
+	return style
+
 func _style_button(button: Button, color: Color):
-	button.add_theme_stylebox_override("normal", _make_style(color.darkened(0.32), color.darkened(0.08), 1, 6))
-	button.add_theme_stylebox_override("hover", _make_style(color.darkened(0.18), color.lightened(0.18), 1, 6))
-	button.add_theme_stylebox_override("pressed", _make_style(color.darkened(0.44), color, 1, 6))
-	button.add_theme_stylebox_override("disabled", _make_style(Color(0.13, 0.15, 0.18, 0.82), Color(0.24, 0.27, 0.32, 0.75), 1, 6))
-	button.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0))
+	var radius = 10
+	var normal = _make_style_ex(color.darkened(0.30), color.darkened(0.05), 1, radius, 6.0, Color(color.r * 0.5, color.g * 0.5, color.b * 0.5, 0.42), 14, 9)
+	var hover = _make_style_ex(color.darkened(0.10), color.lightened(0.22), 1, radius, 12.0, Color(color.r, color.g, color.b, 0.55), 14, 9)
+	var pressed = _make_style_ex(color.darkened(0.46), color, 2, radius, 0.0, Color.BLACK, 14, 9)
+	var disabled = _make_style_ex(Color(0.13, 0.15, 0.20, 0.85), Color(0.24, 0.27, 0.34, 0.75), 1, radius, 0.0, Color.BLACK, 14, 9)
+	button.add_theme_stylebox_override("normal", normal)
+	button.add_theme_stylebox_override("hover", hover)
+	button.add_theme_stylebox_override("pressed", pressed)
+	button.add_theme_stylebox_override("focus", hover)
+	button.add_theme_stylebox_override("disabled", disabled)
+	button.add_theme_color_override("font_color", Color(0.96, 0.98, 1.0))
 	button.add_theme_color_override("font_hover_color", Color.WHITE)
+	button.add_theme_color_override("font_pressed_color", Color.WHITE)
 	button.add_theme_color_override("font_disabled_color", Color(0.52, 0.57, 0.64))
+	button.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.55))
+	button.add_theme_constant_override("outline_size", 2)
 	button.add_theme_font_size_override("font_size", 13)
 
 func _style_line_edit(line_edit: LineEdit):
-	line_edit.add_theme_stylebox_override("normal", _make_style(CARD_BG, Color(0.25, 0.33, 0.45, 0.75), 1, 6))
-	line_edit.add_theme_stylebox_override("focus", _make_style(CARD_BG_HOVER, ACCENT, 1, 6))
-	line_edit.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
+	line_edit.add_theme_stylebox_override("normal", _make_style_ex(CARD_BG, Color(0.28, 0.36, 0.50, 0.80), 1, 8, 0.0, Color.BLACK, 12, 9))
+	line_edit.add_theme_stylebox_override("focus", _make_style_ex(CARD_BG_HOVER, ARCADE_CYAN, 2, 8, 8.0, Color(ARCADE_CYAN.r, ARCADE_CYAN.g, ARCADE_CYAN.b, 0.55), 12, 9))
+	line_edit.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0))
 	line_edit.add_theme_color_override("font_placeholder_color", Color(0.58, 0.65, 0.76))
+	line_edit.add_theme_color_override("caret_color", ARCADE_CYAN)
+	line_edit.add_theme_font_size_override("font_size", 13)
 
 func _style_spinbox(spinbox: SpinBox):
-	spinbox.add_theme_stylebox_override("normal", _make_style(CARD_BG, Color(0.25, 0.33, 0.45, 0.75), 1, 6))
-	spinbox.add_theme_stylebox_override("focus", _make_style(CARD_BG_HOVER, ACCENT, 1, 6))
-	spinbox.add_theme_color_override("font_color", Color(0.92, 0.96, 1.0))
+	spinbox.add_theme_stylebox_override("normal", _make_style_ex(CARD_BG, Color(0.28, 0.36, 0.50, 0.80), 1, 8, 0.0, Color.BLACK, 10, 8))
+	spinbox.add_theme_stylebox_override("focus", _make_style_ex(CARD_BG_HOVER, ARCADE_CYAN, 2, 8, 6.0, Color(ARCADE_CYAN.r, ARCADE_CYAN.g, ARCADE_CYAN.b, 0.45), 10, 8))
+	spinbox.add_theme_color_override("font_color", Color(0.94, 0.97, 1.0))
+	spinbox.add_theme_font_size_override("font_size", 13)
 
 func _refresh_vertical_overlay_styles():
 	if vertical_bg and is_instance_valid(vertical_bg):
@@ -1383,23 +1987,27 @@ func _scenario_panel_border_color() -> Color:
 func _toggle_vertical_mode():
 	is_vertical_mode = not is_vertical_mode
 	if is_vertical_mode:
+		pre_vertical_window_size = DisplayServer.window_get_size()
 		side_panel_was_visible = side_panel.visible
 		side_panel.hide()
 		_enter_vertical_camera_mode()
+		DisplayServer.window_set_size(Vector2i(1080, 1920))
 		_create_vertical_overlay()
-		btn_vertical.text = "Fechar modo video curto (ESC)"
+		btn_vertical.text = "Fechar 9:16 (ESC)"
 		_style_button(btn_vertical, Color(0.6, 0.15, 0.28))
 		if stats_panel: stats_panel.hide()
 	else:
 		_destroy_vertical_overlay()
 		_exit_vertical_camera_mode()
+		DisplayServer.window_set_size(pre_vertical_window_size)
 		if side_panel_was_visible:
 			side_panel.show()
-		btn_vertical.text = "Modo video curto 9:16"
+		btn_vertical.text = "Modo 9:16"
 		_style_button(btn_vertical, Color(0.85, 0.25, 0.55))
 		if stats_panel: stats_panel.show()
 		if current_arena:
 			_fit_camera_to_arena(current_arena.arena_size)
+	_sync_ui_state()
 
 func _enter_vertical_camera_mode():
 	if camera and is_instance_valid(camera):
@@ -1424,12 +2032,12 @@ func _create_vertical_overlay():
 	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	vertical_overlay.add_child(bg)
 	
-	# Painel central vertical 9:16
+	# Painel ocupa a janela toda (que agora é 1080x1920)
 	var vp_rect = get_viewport().get_visible_rect()
-	var panel_h = vp_rect.size.y * 0.92
-	var panel_w = panel_h * (9.0 / 16.0)
-	var panel_x = (vp_rect.size.x - panel_w) / 2.0
-	var panel_y = (vp_rect.size.y - panel_h) / 2.0
+	var panel_w = vp_rect.size.x
+	var panel_h = vp_rect.size.y
+	var panel_x = 0.0
+	var panel_y = 0.0
 	
 	# Borda decorativa
 	var border = Panel.new()
@@ -1441,13 +2049,17 @@ func _create_vertical_overlay():
 	vertical_overlay.add_child(border)
 	
 	vertical_subviewport = SubViewport.new()
-	vertical_subviewport.size = Vector2i(int(panel_w), int(panel_h))
+	# Resolução interna alta para qualidade de gravação (1080x1920)
+	var render_w = 1080
+	var render_h = 1920
+	vertical_subviewport.size = Vector2i(render_w, render_h)
 	vertical_subviewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	vertical_subviewport.world_2d = get_viewport().world_2d
 	vertical_subviewport.transparent_bg = true
 	
 	vertical_container = SubViewportContainer.new()
-	vertical_container.stretch = false
+	vertical_container.stretch = true
+	vertical_container.stretch_shrink = 1
 	vertical_container.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	vertical_container.position = Vector2(panel_x, panel_y)
 	vertical_container.size = Vector2(panel_w, panel_h)
@@ -1513,6 +2125,28 @@ func _create_vertical_overlay():
 	vertical_stats_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
 	vertical_stats_label.add_theme_constant_override("outline_size", 5)
 	stats_margin.add_child(vertical_stats_label)
+
+	vertical_close_button = Button.new()
+	vertical_close_button.text = "Fechar 9:16"
+	vertical_close_button.custom_minimum_size = Vector2(132, 36)
+	_style_button(vertical_close_button, ARCADE_PINK)
+	vertical_close_button.pressed.connect(_toggle_vertical_mode)
+	vertical_overlay.add_child(vertical_close_button)
+	
+	vertical_countdown_label = Label.new()
+	vertical_countdown_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	vertical_countdown_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	vertical_countdown_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	vertical_countdown_label.clip_text = false
+	vertical_countdown_label.visible = false
+	vertical_countdown_label.add_theme_font_size_override("font_size", 200)
+	vertical_countdown_label.add_theme_color_override("font_color", Color.WHITE)
+	vertical_countdown_label.add_theme_color_override("font_outline_color", Color.BLACK)
+	vertical_countdown_label.add_theme_constant_override("outline_size", 16)
+	var brawl_font = _load_brawl_countdown_font()
+	if brawl_font:
+		vertical_countdown_label.add_theme_font_override("font", brawl_font)
+	vertical_overlay.add_child(vertical_countdown_label)
 	
 	# Label de instrucao
 	var lbl_info = Label.new()
@@ -1530,6 +2164,8 @@ func _create_vertical_overlay():
 	
 	_layout_vertical_overlay()
 	_update_vertical_stats()
+	_update_vertical_countdown_overlay(false)
+	_sync_ui_state()
 
 func _layout_vertical_overlay():
 	if not vertical_overlay or not is_instance_valid(vertical_overlay):
@@ -1599,6 +2235,49 @@ func _layout_vertical_overlay():
 	if vertical_stats_panel and is_instance_valid(vertical_stats_panel):
 		vertical_stats_panel.position = stats_rect.position
 		vertical_stats_panel.size = stats_rect.size
+	
+	if vertical_countdown_label and is_instance_valid(vertical_countdown_label):
+		# Covers the full 9:16 frame so horizontal+vertical centering work correctly.
+		# pivot_offset at center ensures scale animation stays on-center.
+		vertical_countdown_label.position = frame_rect.position
+		vertical_countdown_label.size = frame_rect.size
+		vertical_countdown_label.pivot_offset = frame_rect.size * 0.5
+
+	if vertical_close_button and is_instance_valid(vertical_close_button):
+		var viewport_size = get_viewport().get_visible_rect().size
+		var button_size = vertical_close_button.custom_minimum_size
+		if button_size.x <= 0.0 or button_size.y <= 0.0:
+			button_size = Vector2(132, 36)
+		vertical_close_button.size = button_size
+		var close_margin = 12.0
+		var right_space = viewport_size.x - (frame_rect.position.x + frame_rect.size.x)
+		var left_space = frame_rect.position.x
+		var top_space = frame_rect.position.y
+		var bottom_space = viewport_size.y - (frame_rect.position.y + frame_rect.size.y)
+		var close_pos = Vector2(close_margin, close_margin)
+		var has_outside_slot = false
+		if right_space >= button_size.x + close_margin:
+			close_pos = Vector2(frame_rect.position.x + frame_rect.size.x + close_margin, frame_rect.position.y + close_margin)
+			has_outside_slot = true
+		elif left_space >= button_size.x + close_margin:
+			close_pos = Vector2(frame_rect.position.x - button_size.x - close_margin, frame_rect.position.y + close_margin)
+			has_outside_slot = true
+		elif bottom_space >= button_size.y + close_margin:
+			close_pos = Vector2(
+				clamp(frame_rect.position.x + frame_rect.size.x - button_size.x, close_margin, viewport_size.x - button_size.x - close_margin),
+				frame_rect.position.y + frame_rect.size.y + close_margin
+			)
+			has_outside_slot = true
+		elif top_space >= button_size.y + close_margin:
+			close_pos = Vector2(
+				clamp(frame_rect.position.x + frame_rect.size.x - button_size.x, close_margin, viewport_size.x - button_size.x - close_margin),
+				frame_rect.position.y - button_size.y - close_margin
+			)
+			has_outside_slot = true
+
+		vertical_close_button.visible = has_outside_slot
+		if has_outside_slot:
+			vertical_close_button.position = close_pos
 	
 	_update_vertical_camera(true)
 
@@ -1862,9 +2541,9 @@ func _update_vertical_stats(alive_override = null, all_override = null):
 		vertical_title_label.text = _vertical_names_only_title(all_balls, title_size)
 		
 		if is_start_countdown:
-			vertical_stats_label.text = "[center][font_size=%d][b][color=#e0443e]COMECA EM %d[/color][/b][/font_size]\n[font_size=%d][color=%s]Preparando a arena[/color][/font_size][/center]" % [
+			vertical_stats_label.text = "[center][font_size=%d][b][color=%s]PREPARAR...[/color][/b][/font_size]\n[font_size=%d][color=%s]Aguardando inicio[/color][/font_size][/center]" % [
 				stats_main_size,
-				max(1, int(ceil(start_countdown_timer))),
+				accent_color,
 				stats_sub_size,
 				meta_color
 			]
@@ -1961,6 +2640,9 @@ func _color_to_bbcode(color: Color) -> String:
 func _destroy_vertical_overlay():
 	if vertical_camera_tween and vertical_camera_tween.is_valid():
 		vertical_camera_tween.kill()
+	if vertical_countdown_tween and vertical_countdown_tween.is_valid():
+		vertical_countdown_tween.kill()
+	vertical_countdown_tween = null
 	if vertical_overlay and is_instance_valid(vertical_overlay):
 		vertical_overlay.queue_free()
 	vertical_overlay = null
@@ -1974,6 +2656,8 @@ func _destroy_vertical_overlay():
 	vertical_title_label = null
 	vertical_stats_panel = null
 	vertical_stats_label = null
+	vertical_close_button = null
+	vertical_countdown_label = null
 	vertical_base_zoom_factor = 1.0
 	vertical_zoom_multiplier = 1.0
 	vertical_camera_tween = null

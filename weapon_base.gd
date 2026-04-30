@@ -9,6 +9,8 @@ var weapon_name: String = "Base Weapon"
 var _node_property_cache: Dictionary = {}
 var _ball_group_cache: Array = []
 var _ball_group_cache_frame: int = -1
+static var _shared_ball_group_cache: Array = []
+static var _shared_ball_group_cache_frame: int = -1
 #endregion
 
 #region Interface
@@ -77,9 +79,11 @@ func _get_ball_candidates() -> Array:
 		_ball_group_cache_frame = -1
 		return _ball_group_cache
 	var frame = Engine.get_physics_frames()
-	if _ball_group_cache_frame != frame:
-		_ball_group_cache = owner_ball.get_tree().get_nodes_in_group("balls")
-		_ball_group_cache_frame = frame
+	if _shared_ball_group_cache_frame != frame:
+		_shared_ball_group_cache = owner_ball.get_tree().get_nodes_in_group("balls")
+		_shared_ball_group_cache_frame = frame
+	_ball_group_cache = _shared_ball_group_cache
+	_ball_group_cache_frame = _shared_ball_group_cache_frame
 	return _ball_group_cache
 
 func _is_valid_enemy(target) -> bool:

@@ -78,20 +78,6 @@ text = "Cenario"
 [node name="ScenarioOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
 layout_mode = 2
 
-[node name="Sep1" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
-layout_mode = 2
-
-[node name="LblPresets" type="Label" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
-layout_mode = 2
-text = "Preset"
-
-[node name="PresetOption" type="OptionButton" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
-layout_mode = 2
-
-[node name="BtnLoadPreset" type="Button" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
-layout_mode = 2
-text = "Carregar preset"
-
 [node name="Sep2" type="HSeparator" parent="CanvasLayer/Panel/MarginContainer/ScrollOuter/VBox"]
 layout_mode = 2
 

@@ -37,6 +37,7 @@ var smoke_forward_variation: float = 12.0 # Random forward/back offset each spra
 var smoke_spread_degrees: float = 16.0 # Random angle spread for secondary smokes
 var smoke_rotation_speed_min: float = 0.8 # Minimum spin speed after launch (rad/s)
 var smoke_rotation_speed_max: float = 2.2 # Maximum spin speed after launch (rad/s)
+var max_active_smokes: int = 22          # Safety cap to avoid runaway frame cost in larger battles
 
 # --- Special Aura ---
 var hits_for_special: int = 5          # Number of smoke ticks to trigger special
@@ -308,6 +309,8 @@ func _play_ult_voice():
 	_play_random_voice(ult_voice_player, HAIRSPRAY_ULT_VOICE_STREAMS)
 
 func _add_smoke(spawn_pos: Vector2, smoke_dir: Vector2, travel_scale: float, size_scale: float):
+	if active_smokes.size() >= max_active_smokes:
+		active_smokes.remove_at(0)
 	var safe_scale = max(size_scale, 0.1)
 	var smoke_radius_value = smoke_radius * safe_scale
 	var rotation_dir = -1.0 if randf() < 0.5 else 1.0

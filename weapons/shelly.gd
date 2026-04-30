@@ -59,6 +59,7 @@ var kill_voice_cooldown: float = 1.4
 @export var custom_weapon_texture: Texture2D = null
 @export var custom_attack_texture: Texture2D = null
 @export var custom_super_texture: Texture2D = null
+@export var weapon_texture_scale: float = 2.5
 @export var attack_texture_scale: float = 1.75
 @export var super_texture_scale: float = 2.75
 # ==============================================================
@@ -68,9 +69,9 @@ var shot_timer: float = 0.0
 var special_cooldown: float = 25.0   # Start fully depleted (equals special_cooldown_time)
 var burst_in_progress: bool = false
 var must_reload_full: bool = false
-var super_trail_max_points: int = 4
-var super_trail_spacing: float = 22.0
-var super_trail_width: float = 12.0
+var super_trail_max_points: int = 10
+var super_trail_spacing: float = 14.0
+var super_trail_width: float = 18.0
 var super_hit_spark_budget_per_frame: int = 2
 var super_hit_sparks_this_frame: int = 0
 var super_status_targets_this_frame: Dictionary = {}
@@ -107,6 +108,8 @@ func setup(owner: Node):
 	_setup_sfx_players()
 	_setup_voice_players()
 
+	if custom_weapon_texture == null and ResourceLoader.exists("res://weapons/texturas/shelly_shotgun.png"):
+		custom_weapon_texture = load("res://weapons/texturas/shelly_shotgun.png")
 	if custom_attack_texture == null and ResourceLoader.exists("res://weapons/texturas/shelly_attack.png"):
 		custom_attack_texture = load("res://weapons/texturas/shelly_attack.png")
 	if custom_super_texture == null and ResourceLoader.exists("res://weapons/texturas/shelly_super.png"):
@@ -495,7 +498,7 @@ func _draw():
 	var gun_dir = Vector2.RIGHT.rotated(draw_angle)
 	var gun_pos = Vector2.RIGHT.rotated(orbit_angle) * (38.0 - kick * 12.0)
 	if custom_weapon_texture:
-		draw_set_transform(gun_pos, draw_angle, Vector2.ONE)
+		draw_set_transform(gun_pos, draw_angle, Vector2.ONE * weapon_texture_scale)
 		var tex_size = custom_weapon_texture.get_size()
 		draw_texture_rect(custom_weapon_texture, Rect2(-tex_size/2, tex_size), false)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
@@ -590,12 +593,30 @@ func _draw_super_pellet_trail(p: Dictionary, fx_scale: float, alpha: float):
 	if trail.is_empty():
 		return
 	var next_pos: Vector2 = p.pos
-	for i in range(trail.size() - 1, -1, -1):
+	var trail_size = trail.size()
+	for i in range(trail_size - 1, -1, -1):
 		var point: Vector2 = trail[i]
-		var t = float(i + 1) / float(trail.size() + 1)
-		var trail_alpha = alpha * t * 0.42
+		var t = float(i + 1) / float(trail_size + 1)
 		var local_point = point - owner_ball.global_position
 		var local_next = next_pos - owner_ball.global_position
-		var width = max(2.5, super_trail_width * t * fx_scale)
-		draw_line(local_point, local_next, Color(0.78, 0.42, 1.0, trail_alpha), width, false)
+
+		# Outer glow (wide, faint purple)
+		var glow_w = max(4.0, super_trail_width * 2.2 * t * fx_scale)
+		draw_line(local_point, local_next, Color(0.72, 0.28, 1.0, alpha * t * 0.18), glow_w, false)
+
+		# Mid band (purple-pink gradient by lerping color)
+		var mid_color = Color(0.88, 0.44, 1.0).lerp(Color(1.0, 0.62, 0.92), 1.0 - t)
+		var mid_w = max(2.5, super_trail_width * t * fx_scale)
+		draw_line(local_point, local_next, Color(mid_color, alpha * t * 0.65), mid_w, false)
+
+		# Bright core (white-pink, thin)
+		var core_w = max(1.2, super_trail_width * 0.35 * t * fx_scale)
+		draw_line(local_point, local_next, Color(1.0, 0.88, 1.0, alpha * t * 0.85), core_w, false)
+
+		# Sparkle dots along the trail
+		if i % 2 == 0:
+			var spark_pos = local_point.lerp(local_next, 0.5)
+			var spark_r = randf_range(1.2, 3.0) * t * fx_scale
+			draw_circle(spark_pos, spark_r, Color(1.0, 0.78, 1.0, alpha * t * 0.55))
+
 		next_pos = point

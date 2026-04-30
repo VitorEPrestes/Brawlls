@@ -52,6 +52,8 @@ var target_scan_timer: float = 0.0
 var pull_target: Node = null
 var is_touching_wall: bool = false
 var wall_bounce_queued: bool = false
+static var _shared_ball_group_cache: Array = []
+static var _shared_ball_group_cache_frame: int = -1
 
 @onready var hp_label = $HPLabel
 @onready var label = $Label
@@ -235,7 +237,7 @@ func _refresh_pull_target():
 	
 	var closest_dist_sq = INF
 	var owner_pos = global_position
-	for child in get_tree().get_nodes_in_group("balls"):
+	for child in _get_ball_group_cached():
 		if child == self:
 			continue
 		if not child.has_method("take_damage"):
@@ -248,6 +250,17 @@ func _refresh_pull_target():
 		if dist_sq < closest_dist_sq:
 			closest_dist_sq = dist_sq
 			pull_target = child
+
+func _get_ball_group_cached() -> Array:
+	if not is_inside_tree():
+		_shared_ball_group_cache = []
+		_shared_ball_group_cache_frame = -1
+		return _shared_ball_group_cache
+	var frame = Engine.get_physics_frames()
+	if _shared_ball_group_cache_frame != frame:
+		_shared_ball_group_cache = get_tree().get_nodes_in_group("balls")
+		_shared_ball_group_cache_frame = frame
+	return _shared_ball_group_cache
 #endregion
 
 #region Drawing
@@ -288,17 +301,18 @@ func _draw():
 func _draw_slow_visual(slow_visual: Dictionary, body_scale: float):
 	var slow_color: Color = slow_visual.get("color", Color(0.55, 0.85, 1.0, 0.78))
 	var slow_strength = clamp(float(slow_visual.get("strength", 0.4)), 0.0, 1.0)
+	var palette = _build_slow_palette(slow_color)
 	if slow_fx_texture:
-		_draw_slow_texture_drips(slow_color, slow_strength, body_scale)
+		_draw_slow_texture_drips(palette, slow_strength, body_scale)
 	else:
-		_draw_slow_ring_fallback(slow_color, slow_strength, body_scale)
+		_draw_slow_ring_fallback(Color(palette["accent"], slow_color.a), slow_strength, body_scale)
 
-func _draw_slow_texture_drips(slow_color: Color, slow_strength: float, body_scale: float):
+func _draw_slow_texture_drips(palette: Dictionary, slow_strength: float, body_scale: float):
 	var tex_size = slow_fx_texture.get_size()
 	var longest_side = max(tex_size.x, tex_size.y)
 	var time = Time.get_ticks_msec() * 0.001
-	var ball_radius = 29.0
-	var drip_count = 8
+	var ball_radius = 31.0
+	var drip_count = 12
 	for i in range(drip_count):
 		var seed = _slow_fx_seed(i, 0.0)
 		var speed = 0.58 + _slow_fx_seed(i, 4.1) * 0.56
@@ -310,16 +324,17 @@ func _draw_slow_texture_drips(slow_color: Color, slow_strength: float, body_scal
 		x = clamp(x, -max_x, max_x)
 		
 		var fade = sin(cycle * PI)
-		var alpha = clamp(fade * (0.38 + slow_strength * 0.36), 0.0, 0.86)
-		var target_size = lerp(10.0, 18.0, _slow_fx_seed(i, 8.3)) * (0.9 + slow_strength * 0.25)
+		var alpha = clamp(fade * (0.48 + slow_strength * 0.42), 0.0, 0.94)
+		var target_size = lerp(14.0, 26.0, _slow_fx_seed(i, 8.3)) * (1.0 + slow_strength * 0.4)
 		var tex_scale = (target_size * body_scale) / max(longest_side, 1.0)
 		var stretch = 1.0 + cycle * 0.45
 		var pos = Vector2(x, y) * body_scale
 		var tilt = sin(time * 1.4 + float(i)) * 0.12
 		
-		draw_circle(pos + Vector2(0.0, target_size * 0.25) * body_scale, target_size * 0.28 * body_scale, Color(slow_color, alpha * 0.18))
+		draw_circle(pos + Vector2(0.0, target_size * 0.3) * body_scale, target_size * 0.36 * body_scale, Color(palette["shadow"], alpha * 0.42))
 		draw_set_transform(pos, tilt, Vector2(tex_scale * 0.95, tex_scale * stretch))
-		draw_texture_rect(slow_fx_texture, Rect2(-tex_size / 2.0, tex_size), false, Color(1.0, 1.0, 1.0, alpha))
+		draw_texture_rect(slow_fx_texture, Rect2(-tex_size / 2.0, tex_size), false, Color(palette["accent"], alpha * 0.95))
+		draw_texture_rect(slow_fx_texture, Rect2(-tex_size / 2.0, tex_size), false, Color(palette["highlight"], alpha * 0.58))
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 func _draw_slow_ring_fallback(slow_color: Color, slow_strength: float, body_scale: float):
@@ -336,6 +351,20 @@ func _draw_slow_ring_fallback(slow_color: Color, slow_strength: float, body_scal
 
 func _slow_fx_seed(index: int, salt: float) -> float:
 	return fposmod(sin(float(index) * 12.9898 + salt) * 43758.5453, 1.0)
+
+func _build_slow_palette(base_color: Color) -> Dictionary:
+	var accent = base_color
+	var distance_to_ball = abs(base_color.r - ball_color.r) + abs(base_color.g - ball_color.g) + abs(base_color.b - ball_color.b)
+	if distance_to_ball < 0.42:
+		# If slow color is too close to the ball fill, force a warm accent for readability.
+		accent = Color(1.0, 0.8, 0.24, base_color.a)
+	var highlight = Color(1.0, 1.0, 1.0, 0.86)
+	var shadow = Color(0.05, 0.08, 0.12, 0.72)
+	return {
+		"accent": accent,
+		"highlight": highlight,
+		"shadow": shadow,
+	}
 #endregion
 
 #region Status Effects

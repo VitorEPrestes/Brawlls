@@ -12,7 +12,7 @@ Simulador 2D de batalhas físicas criado em Godot (GDScript).
 - `Ball.tscn` / `ball.gd`: entidade básica (HP, movimento, delega para armas).
 - `Projectile.tscn` / `projectile.gd`: projéteis e detecção de colisão.
 - `weapons/`: implementações das armas (ex.: `colt.gd`, `frank.gd`, `shelly.gd`).
-- `preset_catalog.gd`: presets de batalha para testes rápidos.
+- Tela inicial com montagem manual da fila, preview do brawler selecionado e início vazio.
 
 ## Observações e dicas
 - Muitos ativos de áudio e imagens já estão incluídos em `sfx/` e `weapons/texturas/`.

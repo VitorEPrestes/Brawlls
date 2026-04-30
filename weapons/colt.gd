@@ -416,13 +416,13 @@ func _track_target(delta: float, turn_speed: float):
 		return
 	orbit_angle = lerp_angle(orbit_angle, predicted_angle, min(1.0, delta * turn_speed))
 
-func _set_attack_angle_to_target(target: Node, projectile_speed: float, lead_strength: float):
+func _set_attack_angle_to_target(target, projectile_speed: float, lead_strength: float):
 	var predicted_angle = _get_target_aim_angle(target, projectile_speed, lead_strength)
 	if predicted_angle == null:
 		return
 	orbit_angle = predicted_angle
 
-func _get_target_aim_angle(target: Node, projectile_speed: float, lead_strength: float):
+func _get_target_aim_angle(target, projectile_speed: float, lead_strength: float):
 	if not _is_valid_target(target):
 		return null
 	var origin = owner_ball.global_position
@@ -448,7 +448,7 @@ func _hold_owner_still():
 func _find_nearest_target(max_range: float) -> Node:
 	return _find_nearest_enemy(max_range)
 
-func _is_valid_target(target: Node) -> bool:
+func _is_valid_target(target) -> bool:
 	return _is_valid_enemy(target)
 
 func on_owner_eliminated_target(target: Node):
@@ -488,8 +488,9 @@ func _attach_sfx_to_projectile(projectile: Node, is_super: bool):
 	sfx.stream = COLT_ULT_SFX_STREAM if is_super else COLT_ATK_SFX_STREAM
 	sfx.volume_db = -4.0 if is_super else -3.0
 	sfx.pitch_scale = randf_range(0.97, 1.05)
-	sfx.autoplay = true
+	sfx.autoplay = false
 	projectile.add_child(sfx)
+	sfx.play()
 
 func _draw_aim_glow(forward: Vector2, accent: Color):
 	if state != "basic_windup" and state != "super_windup":
