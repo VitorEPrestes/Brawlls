@@ -23,11 +23,7 @@ Simulador 2D de batalhas físicas criado em Godot (GDScript).
 Repositório pessoal.
 
 ## Uso de assets
-Alguns ativos (imagens/ícones) deste projeto foram obtidos do Supercell Fan Kit (https://fankit.supercell.com/).
+Algumas imagens e ícones usados neste projeto foram retirados do Supercell Fan Kit (https://fankit.supercell.com/).
 
-Este projeto exibe o aviso exigido pela Supercell para o uso de Fan Kit:
-
-"This material is unofficial and is not endorsed by Supercell. For more information see Supercell's Fan Content Policy: www.supercell.com/fan-content-policy."
-
-Política completa: https://www.supercell.com/fan-content-policy/
+*This material is unofficial and is not endorsed by Supercell. For more information see Supercell's Fan Content Policy: www.supercell.com/fan-content-policy.*
 
