@@ -1,37 +1,49 @@
-# Brawlls Simulator
+# Brawlls
 
-A 2D physical battle simulator built in **Godot 4.x** with GDScript.
+Simulador 2D de batalhas físicas criado em Godot (GDScript).
 
-## Features (MVP)
-- **Arena**: 2D closed arena with physics boundaries.
-- **Balls**: Physics-based entities that move and attack automatically.
-- **Weapons**: Modular strategy-pattern based weapons:
-  - Shield: Blocks or reduces incoming damage before HP is applied.
-  - Pa: Dash combo attacker with a life-steal projectile special.
-  - Cacto: Splitting projectile shooter with a slowing thorn zone.
-  - Laque: Persistent smoke clouds plus an aura special.
-  - Adolescente: Fast punch combo fighter with an invulnerable dash special.
-  - Colt: Dual revolvers, slow-tracking burst fire, and a longer charged super burst.
-  - Shelly: Shotgun pellets and slowing special pellets.
-  - Frank: Heavy cone attacks and a stunning super.
-- **Auto-Battles**: AI automatically seeks nearest targets and battles.
-- **UI**: Presets for teams, duels, Free-For-All, stress tests, and a 9:16 short-video view.
+**Visão rápida**: é um protótipo de arena com entidades que batalham automaticamente usando armas modulares.
 
-## How to Run
-1. Open Godot 4.x.
-2. Import the `Brawlls` project using the `project.godot` file.
-3. Open `Main.tscn` as the main scene (or just press F5, as it should be set or will prompt you to select the main scene, you can select `Main.tscn`).
-4. Select a preset in the top right corner.
-5. Click **Start Battle** to watch the simulation.
-6. The battle ends when only one entity (or none) remains.
-7. Click **Reset** to clear the arena and start over.
+**Versão do Godot**: recomendado Godot 4.6 (veja `project.godot`).
 
-## Architecture
-- `main.gd` / `Main.tscn`: UI and battle orchestration.
-- `preset_catalog.gd`: Battle preset definitions.
-- `arena.gd` / `Arena.tscn`: Dynamic generation of boundary walls.
-- `ball.gd` / `Ball.tscn`: Core entity, handles health, physics movement, and delegates weapon behavior.
-- `projectile.gd` / `Projectile.tscn`: Area2D used for ranged attacks.
-- `weapon_registry.gd`: Weapon aliases, scripts, and final stat modifiers.
-- `weapon_base.gd`: Base class for all weapons, including shared target, damage, heal, and status helpers.
-- `weapons/`: Subclasses of weapons implementing specific behaviors (`modify_incoming_damage`, `on_hit`, `process_weapon`, `on_owner_damaged`).
+## Como abrir e executar
+- Instale Godot 4.6 (estável/RC conforme preferir).
+- Abra o editor Godot e selecione o arquivo [project.godot](project.godot) para carregar o projeto.
+- Ao abrir o projeto, carregue `Main.tscn` e pressione F5 para executar.
+
+Se preferir, via linha de comando (se tiver o `godot` no PATH):
+
+```powershell
+godot --path .
+```
+
+## Estrutura principal do projeto
+- `Main.tscn` / `main.gd`: UI e orquestração da batalha.
+- `Arena.tscn` / `arena.gd`: criação dinâmica de paredes e regras da arena.
+- `Ball.tscn` / `ball.gd`: entidade básica (HP, movimento, delega para armas).
+- `Projectile.tscn` / `projectile.gd`: projéteis e detecção de colisão.
+- `weapons/`: implementações das armas (ex.: `colt.gd`, `frank.gd`, `shelly.gd`).
+- `preset_catalog.gd`: presets de batalha para testes rápidos.
+
+## Observações e dicas
+- Muitos ativos de áudio e imagens já estão incluídos em `sfx/` e `weapons/texturas/`.
+- O projeto usa a pipeline GL compatibility (veja `project.godot`) para maximizar compatibilidade.
+- Se aparecer aviso de conversão de fim-de-linha ao commitar (`CRLF -> LF`), é normal no Windows; verifique `.gitattributes`.
+
+## Contribuindo
+- Abra uma issue descrevendo o bug ou recurso.
+- Para mudanças pequenas, envie um PR na branch `main` (ou crie uma branch por recurso).
+
+Recomendações iniciais de melhorias:
+- adicionar um arquivo `LICENSE` (ex.: MIT) se quiser código aberto.
+- incluir instruções de exportação para builds (Windows/Linux/Mac) no README.
+- criar testes automatizados para lógicas determinísticas (ex.: cálculo de dano).
+
+## Próximos passos que posso fazer por você
+- adicionar um `LICENSE` (MIT) e commitar;
+- criar um `CONTRIBUTING.md` com fluxo de trabalho;
+- gerar um template de issue e PR no repositório;
+- documentar como exportar build para Windows.
+
+---
+Arquivo atualizado: [README.md](README.md)
